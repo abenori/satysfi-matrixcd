@@ -1,0 +1,10 @@
+(version 0.0.2)
+
+(library
+  (name "matrixcd")
+  (version "0.0.1")
+  (sources
+    ((package "matrixcd.satyh" "./matrixcd.satyh")
+     ))
+  (opam "satysfi-matrixcd.opam")
+  (dependencies ()))
