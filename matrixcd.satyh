@@ -185,10 +185,13 @@ let add-to-column obj lst =
 
 let add-to-row obj lst = (List.append lst [[obj]])
 
-let get-center coordlist index = (
-    (Option.from 0pt (List.nth index coordlist)) +'
-    (Option.from 0pt (List.nth (index + 1) coordlist))
-  ) *' 0.5
+% 横方向みたいな変数名……
+let get-center coordlist padding index = 
+  let left-c = Option.from 0pt (List.nth index coordlist) in
+  let right-c = Option.from 0pt (List.nth (index + 1) coordlist) in
+  let (left-p,right-p) = padding in
+  (right-c +' left-c +' left-p -' right-p) *' 0.5
+%  (right-c +' left-c) *' 0.5
 
 let get-metric-from-list x y metric-list =
   match (List.nth y metric-list) with
@@ -300,14 +303,19 @@ let calc-start-point (startx,starty) (endx,endy) (start-obj-width,start-obj-heig
       )
 
 
-let draw-arrows ctx coordxlist coordylist metric-list arrow-list =
-  List.fold-left  (fun lst t -> (
+let draw-arrows ctx coordxlist coordylist hor-padding-list ver-padding-list metric-list arrow-list =
+  List.fold-left (fun lst t -> (
     let (startx,starty) = t#direction-from in
     let (endx,endy) = t#direction-to in
-    let start-centerx = get-center coordxlist startx in
-    let start-centery = get-center coordylist starty in
-    let end-centerx = get-center coordxlist endx in
-    let end-centery = get-center coordylist endy in
+    let get-padding-from-list p-list x y =
+      Option.from (0pt,0pt) (List.nth x (
+        Option.from [] (List.nth y p-list)
+      ))
+    in
+    let start-centerx = get-center coordxlist (get-padding-from-list hor-padding-list startx starty) startx in
+    let start-centery = get-center coordylist (get-padding-from-list ver-padding-list startx starty) starty in
+    let end-centerx = get-center coordxlist (get-padding-from-list hor-padding-list endx endy) endx in
+    let end-centery = get-center coordylist (get-padding-from-list ver-padding-list endx endy) endy in
     let (start-width,start-ht,start-depth) = Option.from (0pt,0pt,0pt) (get-metric-from-list startx starty metric-list) in
     let (end-width,end-ht,end-depth) = Option.from (0pt,0pt,0pt) (get-metric-from-list endx endy metric-list) in
     let start-height = start-ht +' start-depth in
@@ -317,17 +325,48 @@ let draw-arrows ctx coordxlist coordylist metric-list arrow-list =
     List.append lst (draw-arrow-label ctx (arrow-start-x,arrow-start-y) (arrow-end-x,arrow-end-y) t t#label)
   )) [] arrow-list
 
+let make-padding-of-last-row-zero t-list =
+  match List.last t-list with
+  | None -> [[]]
+  | Some(last-column) ->
+    let last-cell = 
+      match List.last last-column with
+      | None -> []
+      | Some((pad-l,pad-r,pad-t,pad-b),ib) -> [((pad-l,0pt,pad-t,0pt),ib)]
+    in
+    let last-cell-column =
+      match List.init last-column with
+      | None -> last-cell
+      | Some(l) -> List.append 
+        (List.map (fun ((pad-l,pad-r,pad-t,pad-b),ib) -> ((pad-l,pad-r,pad-t,0pt),ib)) l)
+        last-cell
+    in
+    match List.init t-list with
+    | None -> [last-cell-column]
+    | Some(l) -> List.append l [last-cell-column]
+
+
+%let l2s l = Float.to-string (Length.to-float l)
+%let out-padding (p-l,p-r,p-t,p-b) = 
+%   display-message (`(` ^ (l2s p-l) ^ `pt, ` ^ (l2s p-r) ^ `pt, ` ^ (l2s p-t) ^ `pt, ` ^ (l2s p-b) ^ `pt)`)
+
 let-inline ctx \matrixcd lst =
-  let pads = (20pt,20pt,20pt,20pt) in
-  let (table-list,arrow-list,metric-list,_,_) = List.fold-left (fun (t-list,a-list,metric-list,(x,y),cr) it ->(
+  let padding = 20pt in
+  let (table-list,arrow-list,metric-list,_,_,_) = List.fold-left (fun (t-list,a-list,metric-list,(x,y),cr,first-line) it ->(
     let () = ref-arrows <- [] in
     let () = ref-cr <- false in 
     let ib = read-inline ctx it in
     let next-cr = !ref-cr in
     let met = get-natural-metrics ib in
+    % 外側のpaddingは0ptにする．
+    let pad-top = if first-line then 0pt else padding in
+    let pad-left = if cr then 0pt else padding in
+    let pad-right = if next-cr then 0pt else padding in
+    let pad-bottom = padding in
+    let pads = (pad-left,pad-right,pad-top,pad-bottom) in
     let (new-t-list,new-metric-list) =
-      if cr then (add-to-row (NormalCell(pads,inline-fil ++ ib ++ inline-fil)) t-list,add-to-row met metric-list)
-      else (add-to-column (NormalCell(pads,inline-fil ++ ib ++ inline-fil)) t-list,add-to-column met metric-list)
+      if cr then ((add-to-row (pads,inline-fil ++ ib ++ inline-fil) t-list),(add-to-row met metric-list))
+      else ((add-to-column (pads,inline-fil ++ ib ++ inline-fil) t-list),(add-to-column met metric-list))
     in
     let (new-x,new-y) = if next-cr then (0,y + 1) else (x + 1,y) in
     let append-a-list = List.map (fun t -> (
@@ -340,10 +379,29 @@ let-inline ctx \matrixcd lst =
       )) !ref-arrows
     in
     let new-a-list = List.append a-list append-a-list in
-    (new-t-list,new-a-list,new-metric-list,(new-x,new-y),next-cr)
-  )) ([[]],[],[[]],(0,0),false) lst in
-  tabular table-list (fun xlst ylst -> (
-    draw-arrows ctx xlst ylst metric-list arrow-list
+    (new-t-list,new-a-list,new-metric-list,(new-x,new-y),next-cr,(first-line && (not next-cr)))
+  )) ([],[],[],(0,0),true,true) lst in
+  let correct-padding-table-list = make-padding-of-last-row-zero table-list in
+  let horizontal-padding-list = List.map (fun column -> 
+    List.map (fun ((p-l,p-r,p-t,p-b),c) -> (p-l,p-r)) column
+  ) correct-padding-table-list in
+  let vertical-padding-list = List.map (fun column -> 
+    List.map (fun ((p-l,p-r,p-t,p-b),c) -> (p-b,p-t)) column
+  ) correct-padding-table-list in
+%  let a = List.map (fun column -> (
+%    let () = display-message `column` in
+%    List.map (fun (p,c) -> (
+%      let () = out-padding p in
+%      1
+%    )) column
+%  )) correct-padding-table-list
+%  in
+  let table-cell-list = List.map (fun column -> 
+      List.map (fun (c) -> NormalCell(c)) column
+    ) correct-padding-table-list
+  in
+  tabular table-cell-list (fun xlst ylst -> (
+   draw-arrows ctx xlst ylst horizontal-padding-list vertical-padding-list metric-list arrow-list
   ))
 
 
