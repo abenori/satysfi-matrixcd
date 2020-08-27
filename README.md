@@ -4,9 +4,11 @@
 
 ## Example
 ```
-\MatrixCD.matrixcd(open MatrixCD in {
-  | ${A}\arrow[to `rd`];  | ${B} \arrow[to `l`;label ?:[swap;description] {${f}};dotted]; \cr;
-  |  | ${C}\arrow[to `u`; label {${g}}; mapsto];
-|});
+\eqn(${
+  \MatrixCD.matrixcd!(open MatrixCD in {
+    | ${A}\arrow[to `rd`];  | ${B} \arrow[to `l`;label ?:[swap;description] {${f}};dotted]; \cr;
+    |  | ${C}\arrow[to `u`; label {${g}}; mapsto];
+  |})
+});
 ```
 

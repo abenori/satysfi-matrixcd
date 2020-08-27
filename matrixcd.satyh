@@ -5,24 +5,28 @@
 @require: color
 
 module MatrixCD : sig
-  type label-data
-  type arrow-data
-  val \matrixcd : [inline-text list] inline-cmd
-  val \arrow : [(arrow-data -> arrow-data) list] inline-cmd
+  type label-option
+  type arrow-option
+  val \matrixcd : [inline-text list] math-cmd
+  val \matrixcd-t : [inline-text list] inline-cmd
+  val \matrixcd-m : [inline-text list] math-cmd
+  val \arrow : [arrow-option list] inline-cmd
   val \cr : [] inline-cmd
-  val to : string -> arrow-data -> arrow-data
-  val from : string -> arrow-data -> arrow-data
-  val equal : arrow-data -> arrow-data
-  val arrow-color : color -> arrow-data -> arrow-data
-  val crossing-over : arrow-data -> arrow-data
-  val dotted : arrow-data -> arrow-data
-  val dashed : arrow-data -> arrow-data
-  val mapsto : arrow-data -> arrow-data
-  val label : (label-data -> label-data) list ?-> inline-text -> arrow-data -> arrow-data
-  val label-color : color -> label-data -> label-data
-  val swap : label-data -> label-data
-  val description : label-data -> label-data
-  val pos : float -> label-data -> label-data
+  val to : string -> arrow-option
+  val from : string -> arrow-option
+  val arrow-out : float -> arrow-option
+  val arrow-in : float -> arrow-option
+  val equal : arrow-option
+  val arrow-color : color -> arrow-option
+  val crossing-over : arrow-option
+  val dotted : arrow-option
+  val dashed : arrow-option
+  val mapsto : arrow-option
+  val label : label-option list ?-> inline-text -> arrow-option
+  val label-color : color -> label-option
+  val swap : label-option
+  val description : label-option
+  val pos : float -> label-option
 
 end = struct
 
@@ -34,25 +38,32 @@ type label-data = (|
   description : bool;
 |)
 
-type arrow-option = (|
+type label-option = label-data -> label-data
+type arrow-angle = 
+  |AbsoluteAngle of float
+  |RelativeAngle of float
+
+type arrow-option-data = (|
   color : color;
   thickness : length;
   % 度数法……
-  angle-in : float;
-  angle-out : float;
+  angle-in : arrow-angle;
+  angle-out : arrow-angle;
 |)
 
 type arrow-data = (|
   direction-to : int * int;
   direction-from : int * int;
   label : label-data list;
-  arrow-options : arrow-option;
+  arrow-options : arrow-option-data;
   crossing-over : bool;
-  color : color;
-  arrow-tail : arrow-option -> length * length -> length * length -> context -> (length * length) * graphics list;
-  arrow-head  : arrow-option -> length * length -> length * length -> context -> (length * length) * graphics list;
-  arrow-body  : arrow-option -> length * length -> length * length -> context -> graphics list;
+  arrow-tail : arrow-option-data -> length * length -> length * length -> context -> (length * length) * graphics list;
+  arrow-head  : arrow-option-data -> length * length -> length * length -> context -> (length * length) * graphics list;
+  arrow-body  : arrow-option-data -> length * length -> length * length -> context -> graphics list;
+  label-position : arrow-option-data -> length * length -> length * length -> float -> (length * length) * (length * length);
 |)
+
+type arrow-option = arrow-data -> arrow-data
 
 % \arrow / \crで指定された内容を一時的に格納する
 let-mutable ref-arrows <- []
@@ -65,33 +76,54 @@ let sqrt x =
     else aux ((y +. (x /. y)) *. 0.5) (n - 1)
   in
   aux x 10
+let to-radian angle = angle *. 3.14159 /. 180.0
+let rotate (x,y) angle = (
+  (x *' (cos angle) -' y *' (sin angle)),
+  (x *' (sin angle) +' y *' (cos angle))
+)
 
 let abs-length a = if a <' 0pt then 0pt -' a else a
 let sgn-length a = if a <' 0pt then (0.0-.1.0) else 1.0
 let abs-float a = if (1.0pt *' a) <' 0.0pt then 0.0 -. a else a
 
 % drawing arrows
+let normal-label-position opt (startx,starty) (endx,endy) position =
+  ((
+    startx *' (1.0 -. position) +' endx *' position,
+    starty *' (1.0 -. position) +' endy *' position
+  ),((endx -' startx),(endy -'starty)))
+
 % tailとheadはどこまで描いたかを返す．bodyにはこれらの点が始点・終点として渡される．
 let normal-arrow-tail opt startpt endpt ctx = (startpt,[])
 let mapsto-arrow-tail opt (startx,starty) (endx,endy) ctx =
   let size = 2.5pt in
-  let x-f = Length.to-float (endx -' startx) in
-  let y-f = Length.to-float (endy -' starty) in
+  let (x-f,y-f) = 
+    match opt#angle-out with
+    | AbsoluteAngle(a) -> (0.0 -. (sin (to-radian a)),cos (to-radian a))
+    | RelativeAngle(a) -> 
+      let (x,y) = rotate (endx -' startx,endy -' starty) (to-radian (90.0 +. a)) in
+      (Length.to-float x, Length.to-float y)
+  in
   let d = sqrt (x-f *. x-f +. y-f *. y-f) in
   ((startx,starty),[
     stroke opt#thickness opt#color
-      (start-path (startx -' size *' (y-f /. d),starty +' size *' (x-f /. d))
-        |> line-to (startx +' size *' (y-f /. d),starty -' size *' (x-f /. d))
+      (start-path (startx +' size *' (x-f /. d), starty +' size *' (y-f /. d))
+        |> line-to (startx -' size *' (x-f /. d), starty -' size *' (y-f /. d))
         |> terminate-path
       )
   ])
 
 let normal-arrow-head opt (startx,starty) (endx,endy) ctx = 
-  let x-f = Length.to-float (startx -' endx) in
-  let y-f = Length.to-float (starty -' endy) in
+  let (x-f,y-f) = 
+    match opt#angle-in with
+    | RelativeAngle(a) ->
+      let (x,y) = rotate (startx -' endx,starty -' endy) a in
+      (Length.to-float x,Length.to-float y)
+    | AbsoluteAngle(a) -> (cos (to-radian a),sin (to-radian a))
+  in
   let d = sqrt (x-f *. x-f +. y-f *. y-f) in
-  let pos = Length.to-float opt#thickness in
-  let arstpt = (startx *' (pos /. d) +' endx *' ((d -. pos) /. d),starty *' (pos /. d) +' endy *' ((d -. pos) /. d)) in
+  let pos = opt#thickness in
+  let arstpt = (endx +' pos *' (x-f /. d),endy +' pos *' (y-f /. d)) in
   (arstpt,(Gr.arrow opt#thickness opt#color 4pt 1pt 4pt arstpt (endx,endy)))
 let none-arrow-head opt startpt endpt ctx = (endpt,[])
 
@@ -131,18 +163,29 @@ let-rec analyze-position s def =
 let to s t = (|t with direction-to = (analyze-position s t#direction-to);|)
 let from s t = (|t with direction-from = (analyze-position s t#direction-from);|)
 
+let arrow-out a t = (|t with arrow-options = (|t#arrow-options with angle-out = AbsoluteAngle(a);|)|)
+let arrow-in a t = (|t with arrow-options = (|t#arrow-options with angle-in = AbsoluteAngle(a);|)|)
+
 let crossing-over t = (|t with crossing-over = true;|)
-let arrow-color c t = (|t with color = c;|)
+let arrow-color c t = (|t with arrow-options = (|t#arrow-options with color = c;|);|)
 let label-color c t = (|t with color = c;|)
 
 let equal t = (|t with arrow-head = none-arrow-head;|)
-let dotted t = (|t with arrow-body = (fun opt -> dashed-arrow-body (opt#thickness,2pt,0pt) opt);|)
-let dashed t = (|t with arrow-body = dashed-arrow-body (1pt,3pt,0pt);|)
+let dotted t = 
+  (|t with 
+    arrow-body = (fun opt -> dashed-arrow-body (opt#thickness,2pt,0pt) opt);
+    label-position = normal-label-position;
+  |)
+let dashed t = 
+  (|t with
+    arrow-body = (fun opt -> dashed-arrow-body (1pt,3pt,0pt) opt);
+    label-position = normal-label-position;
+  |)
 let mapsto t = (|t with arrow-tail = mapsto-arrow-tail;|)
+
 
 let arrow-scheme default opts =
   let r = List.fold-left (fun t f -> (f t)) default opts in
-  let r = (|r with arrow-options = (|r#arrow-options with color = r#color|);|) in
   ref-arrows <- r :: !ref-arrows
 
 let arrow = arrow-scheme (|
@@ -153,14 +196,14 @@ let arrow = arrow-scheme (|
       color = Color.black;
       thickness = 0.5pt;
       % 度数法……
-      angle-in = 0.0;
-      angle-out = 180.0;
+      angle-in = RelativeAngle(0.0);
+      angle-out = RelativeAngle(180.0);
     |);
     crossing-over = false;
-    color = Color.black;
     arrow-tail = normal-arrow-tail;
     arrow-head = normal-arrow-head;
     arrow-body = normal-arrow-body;
+    label-position = normal-label-position;
   |)
 
 
@@ -185,44 +228,29 @@ let add-to-column obj lst =
 
 let add-to-row obj lst = (List.append lst [[obj]])
 
-% 横方向みたいな変数名……
-let get-center coordlist padding index = 
-  let left-c = Option.from 0pt (List.nth index coordlist) in
-  let right-c = Option.from 0pt (List.nth (index + 1) coordlist) in
-  let (left-p,right-p) = padding in
-  (right-c +' left-c +' left-p -' right-p) *' 0.5
-%  (right-c +' left-c) *' 0.5
-
-let get-metric-from-list x y metric-list =
-  match (List.nth y metric-list) with
-  |None -> None
-  |Some(c) -> (List.nth x c)
-
-let draw-label ctx (startx,starty) (endx,endy) label arrow-options =
+let draw-label ctx (posx,posy) (dirx,diry) label arrow-options =
   let font-size = get-font-size ctx in
   let lit = read-inline (ctx
     |> set-font-size (font-size *' 0.7) 
     |> set-text-color label#color
   ) label#text in
-  let centerx = (startx *' (1.0 -. label#position)) +' (endx *' label#position) in
-  let centery = (starty *' (1.0 -. label#position)) +' (endy *' label#position) in
   let (width,height,depth) = get-natural-metrics lit in
   let (x,y) = 
     if label#description then
-      (centerx -' (width *' 0.5), centery -' ((height -' depth) *' 0.5))
+      (posx -' (width *' 0.5), posy -' ((height -' depth) *' 0.5))
     else
-      let diffx = (if label#swap then (0.0 -. 1.0) else 1.0) *. Length.to-float (endx -' startx) in
-      let diffy = (if label#swap then (0.0 -. 1.0) else 1.0) *. Length.to-float (endy -' starty) in
+      let diffx = (if label#swap then (0.0 -. 1.0) else 1.0) *. Length.to-float dirx in
+      let diffy = (if label#swap then (0.0 -. 1.0) else 1.0) *. Length.to-float diry in
       let distance = sqrt ((diffx *. diffx) +. (diffy *. diffy)) in
       let shiftx =
         (3pt *' diffy *. (0.0 -. 1.0) *. (1.0 /. distance)) -' (
-          if ((not label#swap) && (endy <' starty)) || ((label#swap) && (endy >' starty)) then 0pt
+          if ((not label#swap) && (diry <' 0pt) || ((label#swap) && (diry >' 0pt))) then 0pt
           else width
         )
       in
       let shifty = 
         (3pt *' diffx *. (1.0 /.  distance)) +' (
-          if (not label#swap) && (endx >' startx) || ((label#swap) && (endx <' startx)) then depth
+          if (not label#swap) && (dirx >' 0pt) || ((label#swap) && (dirx <' 0pt)) then depth
           else (0pt -'height)
         )
       in
@@ -232,7 +260,7 @@ let draw-label ctx (startx,starty) (endx,endy) label arrow-options =
       let t = 0pt -' ((a *' diffx +' b *' diffy) *' (1.0 /. (distance *. distance))) in
       let adjustx = t *' diffx in
       let adjusty = t *' diffy in
-      (centerx +' shiftx +' adjustx, centery +' shifty +' adjusty)
+      (posx +' shiftx +' adjustx, posy +' shifty +' adjusty)
   in
   let draw-graphic = [draw-text (x,y) lit] in
   let padding = 2pt in
@@ -248,12 +276,6 @@ let draw-label ctx (startx,starty) (endx,endy) label arrow-options =
     else []
   in
   List.append description-graphic draw-graphic
-
-let draw-arrow ctx startpt endpt typ =
-  let (tailpt,tail) = typ#arrow-tail typ#arrow-options startpt endpt ctx in
-  let (headpt,head) = typ#arrow-head typ#arrow-options startpt endpt ctx in
-  let body = typ#arrow-body typ#arrow-options tailpt headpt ctx in
-  List.append (List.append tail body) head
 
 let draw-crossing-over ctx (startx,starty) (endx,endy) =
   let x-f = Length.to-float (endx -' startx) in
@@ -271,37 +293,59 @@ let draw-crossing-over ctx (startx,starty) (endx,endy) =
       |> close-with-line
   )]
 
-let draw-arrow-label ctx startpt endpt arrow-type lab =
-  let arrow-graphics = draw-arrow ctx startpt endpt arrow-type in
+let draw-each-arrow ctx startpt endpt arrow-data lab =
+  let arrow-graphics =
+    let (tailpt,tail) = arrow-data#arrow-tail arrow-data#arrow-options startpt endpt ctx in
+    let (headpt,head) = arrow-data#arrow-head arrow-data#arrow-options startpt endpt ctx in
+    let body = arrow-data#arrow-body arrow-data#arrow-options tailpt headpt ctx in
+    List.append (List.append tail body) head
+  in
   let crossing-over-graphics = 
-    if arrow-type#crossing-over then draw-crossing-over ctx startpt endpt 
+    if arrow-data#crossing-over then draw-crossing-over ctx startpt endpt 
     else []
   in
   let label-graphics = List.fold-left 
-    (fun lst l -> (List.append (draw-label ctx startpt endpt l arrow-type#arrow-options) lst))
+    (fun lst l -> (
+      let (pospt,dir) = arrow-data#label-position arrow-data#arrow-options startpt endpt l#position in
+      List.append (draw-label ctx pospt dir l arrow-data#arrow-options) lst
+    ))
   [] lab in
   List.append (List.append crossing-over-graphics arrow-graphics) label-graphics
   
 
-let calc-start-point (startx,starty) (endx,endy) (start-obj-width,start-obj-height) opts =
-  if Length.(startx == endx) then 
-    (startx,starty +' ((start-obj-height *' 0.5) *' (sgn-length (endy -' starty))))
-  else if Length.(starty == endy) then
-    (startx +' (start-obj-width *' 0.5 *. (sgn-length (endx -' startx))),starty)
+let get-boundary-point (x,y) (obj-width,obj-height) (dirx,diry) =
+  let dirx-f = Length.to-float dirx in
+  let diry-f = Length.to-float diry in
+  let d = sqrt (dirx-f *. dirx-f +. diry-f *. diry-f) in
+  if Length.(dirx == 0pt) then 
+    (x,y +' ((obj-height *' 0.5) *' (sgn-length diry)))
+  else if Length.(diry == 0pt) then
+    (x +' (obj-width *' 0.5 *. (sgn-length dirx)),y)
   else
-    let point-slope = (starty -' endy) /' (startx -' endx) in
-    let obj-slope = start-obj-height /' start-obj-width in
+    let point-slope = diry /' dirx in
+    let obj-slope = obj-height /' obj-width in
     if Float.((abs-float point-slope) > (abs-float obj-slope)) then
       (
-        startx +' (start-obj-height *' 0.5 *. (1.0 /. point-slope) *. (sgn-length (endy -' starty))),
-        starty +' (start-obj-height *' 0.5 *. (sgn-length (endy -' starty)))
+        x +' (obj-height *' 0.5 *. (1.0 /. point-slope) *. (sgn-length diry)),
+        y +' (obj-height *' 0.5 *. (sgn-length diry))
       )
     else
       (
-        startx +' (start-obj-width *' 0.5 *. (sgn-length (endx -' startx))),
-        starty +' (start-obj-width *' 0.5 *. point-slope *. (sgn-length (endx -' startx)))
+        x +' (obj-width *' 0.5 *. (sgn-length dirx)),
+        y +' (obj-width *' 0.5 *. point-slope *. (sgn-length dirx))
       )
 
+% 横方向みたいな変数名……
+let get-center coordlist padding index = 
+  let left-c = Option.from 0pt (List.nth index coordlist) in
+  let right-c = Option.from 0pt (List.nth (index + 1) coordlist) in
+  let (left-p,right-p) = padding in
+  (right-c +' left-c +' left-p -' right-p) *' 0.5
+
+let get-metric-from-list x y metric-list =
+  match (List.nth y metric-list) with
+  |None -> None
+  |Some(c) -> (List.nth x c)
 
 let draw-arrows ctx coordxlist coordylist hor-padding-list ver-padding-list metric-list arrow-list =
   List.fold-left (fun lst t -> (
@@ -320,9 +364,24 @@ let draw-arrows ctx coordxlist coordylist hor-padding-list ver-padding-list metr
     let (end-width,end-ht,end-depth) = Option.from (0pt,0pt,0pt) (get-metric-from-list endx endy metric-list) in
     let start-height = start-ht +' start-depth in
     let end-height = end-ht +' end-depth in
-    let (arrow-start-x,arrow-start-y) = calc-start-point (start-centerx,start-centery) (end-centerx,end-centery) (start-width +' 6pt,start-height +' 6pt) t#arrow-options in
-    let (arrow-end-x,arrow-end-y) = calc-start-point (end-centerx,end-centery) (start-centerx,start-centery) (end-width +' 6pt,end-height +' 6pt) t#arrow-options in
-    List.append lst (draw-arrow-label ctx (arrow-start-x,arrow-start-y) (arrow-end-x,arrow-end-y) t t#label)
+    let direction-vector = (start-centerx -' end-centerx, start-centery -' end-centery) in
+    let direction-out = 
+      match t#arrow-options#angle-out with
+      | RelativeAngle(a) -> rotate direction-vector (to-radian a)
+      | AbsoluteAngle(a) -> (1pt *' cos (to-radian a),1pt *' sin (to-radian a))
+    in
+    let direction-in = 
+      match t#arrow-options#angle-in with
+      | RelativeAngle(a) -> rotate direction-vector (to-radian a)
+      | AbsoluteAngle(a) -> (1pt *' cos (to-radian a),1pt *' sin (to-radian a))
+    in
+    let (arrow-start-x,arrow-start-y) = 
+      get-boundary-point (start-centerx,start-centery) (start-width +' 6pt,start-height +' 6pt) direction-out
+    in
+    let (arrow-end-x,arrow-end-y) = 
+      get-boundary-point (end-centerx,end-centery) (end-width +' 6pt,end-height +' 6pt)  direction-in
+    in
+    List.append lst (draw-each-arrow ctx (arrow-start-x,arrow-start-y) (arrow-end-x,arrow-end-y) t t#label)
   )) [] arrow-list
 
 let make-padding-of-last-row-zero t-list =
@@ -350,7 +409,7 @@ let make-padding-of-last-row-zero t-list =
 %let out-padding (p-l,p-r,p-t,p-b) = 
 %   display-message (`(` ^ (l2s p-l) ^ `pt, ` ^ (l2s p-r) ^ `pt, ` ^ (l2s p-t) ^ `pt, ` ^ (l2s p-b) ^ `pt)`)
 
-let-inline ctx \matrixcd lst =
+let matrixcd ctx lst =
   let padding = 20pt in
   let (table-list,arrow-list,metric-list,_,_,_) = List.fold-left (fun (t-list,a-list,metric-list,(x,y),cr,first-line) it ->(
     let () = ref-arrows <- [] in
@@ -386,7 +445,7 @@ let-inline ctx \matrixcd lst =
     List.map (fun ((p-l,p-r,p-t,p-b),c) -> (p-l,p-r)) column
   ) correct-padding-table-list in
   let vertical-padding-list = List.map (fun column -> 
-    List.map (fun ((p-l,p-r,p-t,p-b),c) -> (p-b,p-t)) column
+    List.map (fun ((p-l,p-r,p-t,p-b),c) -> (p-b,p-t)) column % 値の小さい方を第一成分にする
   ) correct-padding-table-list in
 %  let a = List.map (fun column -> (
 %    let () = display-message `column` in
@@ -403,6 +462,10 @@ let-inline ctx \matrixcd lst =
   tabular table-cell-list (fun xlst ylst -> (
    draw-arrows ctx xlst ylst horizontal-padding-list vertical-padding-list metric-list arrow-list
   ))
+
+let-math \matrixcd lst = text-in-math MathOrd (fun ctx -> matrixcd ctx lst)
+let-math \matrixcd-m lst = text-in-math MathOrd (fun ctx -> matrixcd ctx lst)
+let-inline ctx \matrixcd-t lst = matrixcd ctx lst
 
 
 end
