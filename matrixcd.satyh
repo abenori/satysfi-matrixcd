@@ -22,6 +22,8 @@ module MatrixCD : sig
   val dotted : arrow-option
   val dashed : arrow-option
   val mapsto : arrow-option
+  val xshift : length -> arrow-option
+  val yshift : length -> arrow-option
   val label : label-option list ?-> inline-text -> arrow-option
   val label-color : color -> label-option
   val swap : label-option
@@ -49,6 +51,8 @@ type arrow-option-data = (|
   % 度数法……
   angle-in : arrow-angle;
   angle-out : arrow-angle;
+  xshift : length;
+  yshift : length;
 |)
 
 type arrow-data = (|
@@ -166,6 +170,9 @@ let from s t = (|t with direction-from = (analyze-position s t#direction-from);|
 let arrow-out a t = (|t with arrow-options = (|t#arrow-options with angle-out = AbsoluteAngle(a);|)|)
 let arrow-in a t = (|t with arrow-options = (|t#arrow-options with angle-in = AbsoluteAngle(a);|)|)
 
+let xshift l t = (|t with arrow-options = (|t#arrow-options with xshift = l;|);|)
+let yshift l t = (|t with arrow-options = (|t#arrow-options with yshift = l;|);|)
+
 let crossing-over t = (|t with crossing-over = true;|)
 let arrow-color c t = (|t with arrow-options = (|t#arrow-options with color = c;|);|)
 let label-color c t = (|t with color = c;|)
@@ -198,6 +205,8 @@ let arrow = arrow-scheme (|
       % 度数法……
       angle-in = RelativeAngle(0.0);
       angle-out = RelativeAngle(180.0);
+      xshift = 0pt;
+      yshift = 0pt;
     |);
     crossing-over = false;
     arrow-tail = normal-arrow-tail;
@@ -310,8 +319,9 @@ let draw-each-arrow ctx startpt endpt arrow-data lab =
       List.append (draw-label ctx pospt dir l arrow-data#arrow-options) lst
     ))
   [] lab in
-  List.append (List.append crossing-over-graphics arrow-graphics) label-graphics
-  
+  List.map (fun g -> (shift-graphics (arrow-data#arrow-options#xshift,arrow-data#arrow-options#yshift) g))
+    (List.append (List.append crossing-over-graphics arrow-graphics) label-graphics)
+
 
 let get-boundary-point (x,y) (obj-width,obj-height) (dirx,diry) =
   let dirx-f = Length.to-float dirx in
