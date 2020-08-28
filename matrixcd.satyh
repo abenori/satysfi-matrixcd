@@ -16,6 +16,7 @@ module MatrixCD : sig
   val from : string -> arrow-option
   val arrow-out : float -> arrow-option
   val arrow-in : float -> arrow-option
+  val phantom : arrow-option
   val equal : arrow-option
   val arrow-color : color -> arrow-option
   val crossing-over : arrow-option
@@ -51,6 +52,9 @@ type arrow-option-data = (|
   angle-in : arrow-angle;
   angle-out : arrow-angle;
   shift : length * length;
+  shift-in : length * length;
+  shift-out : length * length;
+  phantom : bool;
 |)
 
 type arrow-data = (|
@@ -97,6 +101,7 @@ let normal-label-position opt (startx,starty) (endx,endy) position =
 
 % tailとheadはどこまで描いたかを返す．bodyにはこれらの点が始点・終点として渡される．
 let normal-arrow-tail opt startpt endpt ctx = (startpt,[])
+let none-arrow-tail = normal-arrow-tail
 let mapsto-arrow-tail opt (startx,starty) (endx,endy) ctx =
   let size = 2.5pt in
   let (x-f,y-f) = 
@@ -131,6 +136,7 @@ let none-arrow-head opt startpt endpt ctx = (endpt,[])
 
 let normal-arrow-body opt startpt endpt ctx = [stroke opt#thickness opt#color (Gr.line startpt endpt)]
 let dashed-arrow-body pattern opt startpt endpt ctx = [dashed-stroke opt#thickness pattern opt#color (Gr.line startpt endpt)]
+let none-arrow-body opt startpt endpt ctx = []
 
 let label ?:option it t = 
   let default-label = (|
@@ -169,6 +175,15 @@ let arrow-out a t = (|t with arrow-options = (|t#arrow-options with angle-out = 
 let arrow-in a t = (|t with arrow-options = (|t#arrow-options with angle-in = AbsoluteAngle(a);|)|)
 
 let shift p t = (|t with arrow-options = (|t#arrow-options with shift = p;|);|)
+let shift-in p t = (|t with arrow-options = (|t#arrow-options with shift-in = p;|);|)
+let shift-out p t = (|t with arrow-options = (|t#arrow-options with shift-out = p;|);|)
+
+let phantom t = (|t with 
+  arrow-tail = none-arrow-tail;
+  arrow-head = none-arrow-head;
+  arrow-body = none-arrow-body;
+  arrow-options = (|t#arrow-options with phantom = true;|)
+|)
 
 let crossing-over t = (|t with crossing-over = true;|)
 let arrow-color c t = (|t with arrow-options = (|t#arrow-options with color = c;|);|)
@@ -203,6 +218,9 @@ let arrow = arrow-scheme (|
       angle-in = RelativeAngle(0.0);
       angle-out = RelativeAngle(180.0);
       shift = (0pt,0pt);
+      shift-in = (0pt,0pt);
+      shift-out = (0pt,0pt);
+      phantom = false;
     |);
     crossing-over = false;
     arrow-tail = normal-arrow-tail;
@@ -234,14 +252,14 @@ let add-to-column obj lst =
 let add-to-row obj lst = (List.append lst [[obj]])
 
 let draw-label ctx (posx,posy) (dirx,diry) label arrow-options =
-  let font-size = get-font-size ctx in
+  let font-size = (get-font-size ctx) *' (if arrow-options#phantom then 1.0 else 0.7) in
   let lit = read-inline (ctx
-    |> set-font-size (font-size *' 0.7) 
+    |> set-font-size font-size
     |> set-text-color label#color
   ) label#text in
   let (width,height,depth) = get-natural-metrics lit in
   let (x,y) = 
-    if label#description then
+    if label#description || arrow-options#phantom then
       (posx -' (width *' 0.5), posy -' ((height -' depth) *' 0.5))
     else
       let diffx = (if label#swap then (0.0 -. 1.0) else 1.0) *. Length.to-float dirx in
@@ -354,6 +372,7 @@ let get-metric-from-list x y metric-list =
   |Some(c) -> (List.nth x c)
 
 let draw-arrows ctx coordxlist coordylist hor-padding-list ver-padding-list metric-list arrow-list =
+  let object-margin = 10pt in
   List.fold-left (fun lst t -> (
     let (startx,starty) = t#direction-from in
     let (endx,endy) = t#direction-to in
@@ -362,14 +381,18 @@ let draw-arrows ctx coordxlist coordylist hor-padding-list ver-padding-list metr
         Option.from [] (List.nth y p-list)
       ))
     in
-    let start-centerx = get-center coordxlist (get-padding-from-list hor-padding-list startx starty) startx in
-    let start-centery = get-center coordylist (get-padding-from-list ver-padding-list startx starty) starty in
-    let end-centerx = get-center coordxlist (get-padding-from-list hor-padding-list endx endy) endx in
-    let end-centery = get-center coordylist (get-padding-from-list ver-padding-list endx endy) endy in
     let (start-width,start-ht,start-depth) = Option.from (0pt,0pt,0pt) (get-metric-from-list startx starty metric-list) in
     let (end-width,end-ht,end-depth) = Option.from (0pt,0pt,0pt) (get-metric-from-list endx endy metric-list) in
     let start-height = start-ht +' start-depth in
     let end-height = end-ht +' end-depth in
+    let start-centerx = get-center coordxlist (get-padding-from-list hor-padding-list startx starty) startx in
+    let (start-padding-v-b,start-padding-v-t) = (get-padding-from-list ver-padding-list startx starty) in
+    let (end-padding-v-b,end-padding-v-t) = (get-padding-from-list ver-padding-list endx endy) in
+    let start-centery = (Option.from 0pt (List.nth (starty + 1) coordylist)) 
+      +' (start-height *' 0.5) +' start-padding-v-b in
+    let end-centerx = get-center coordxlist (get-padding-from-list hor-padding-list endx endy) endx in
+    let end-centery = (Option.from 0pt (List.nth (endy + 1) coordylist))
+      +' (end-height *' 0.5) +' end-padding-v-b in
     let direction-vector = (start-centerx -' end-centerx, start-centery -' end-centery) in
     let direction-out = 
       match t#arrow-options#angle-out with
@@ -382,10 +405,10 @@ let draw-arrows ctx coordxlist coordylist hor-padding-list ver-padding-list metr
       | AbsoluteAngle(a) -> (1pt *' cos (to-radian a),1pt *' sin (to-radian a))
     in
     let (arrow-start-x,arrow-start-y) = 
-      get-boundary-point (start-centerx,start-centery) (start-width +' 6pt,start-height +' 6pt) direction-out
+      get-boundary-point (start-centerx,start-centery) (start-width +' object-margin,start-height +' object-margin) direction-out
     in
     let (arrow-end-x,arrow-end-y) = 
-      get-boundary-point (end-centerx,end-centery) (end-width +' 6pt,end-height +' 6pt)  direction-in
+      get-boundary-point (end-centerx,end-centery) (end-width +' object-margin,end-height +' object-margin)  direction-in
     in
     List.append lst (draw-each-arrow ctx (arrow-start-x,arrow-start-y) (arrow-end-x,arrow-end-y) t t#label)
   )) [] arrow-list
