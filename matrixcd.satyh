@@ -7,9 +7,10 @@
 module MatrixCD : sig
   type label-option
   type arrow-option
-  val \matrixcd : [inline-text list] math-cmd
-  val \matrixcd-t : [inline-text list] inline-cmd
-  val \matrixcd-m : [inline-text list] math-cmd
+  type matrixcd-option
+  val \matrixcd : [(matrixcd-option list)?; inline-text list] math-cmd
+  val \matrixcd-t : [(matrixcd-option list)?; inline-text list] inline-cmd
+  val \matrixcd-m : [(matrixcd-option list)?; inline-text list] math-cmd
   val \arrow : [arrow-option list] inline-cmd
   val \cr : [] inline-cmd
   val to : string -> arrow-option
@@ -31,6 +32,8 @@ module MatrixCD : sig
   val swap : label-option
   val description : label-option
   val pos : float -> label-option
+  val row-sep : length -> matrixcd-option
+  val column-sep : length -> matrixcd-option
 
 end = struct
 
@@ -46,6 +49,12 @@ type label-option = label-data -> label-data
 type arrow-angle = 
   |AbsoluteAngle of float
   |RelativeAngle of float
+
+type matrixcd-data = (|
+  row-sep : length;
+  column-sep : length;
+|)
+type matrixcd-option = matrixcd-data -> matrixcd-data
 
 type arrow-option-data = (|
   color : color;
@@ -204,6 +213,8 @@ let dashed t =
   |)
 let mapsto t = (|t with arrow-tail = mapsto-arrow-tail;|)
 
+let row-sep l t = (|t with row-sep = l;|)
+let column-sep l t = (|t with column-sep = l;|)
 
 let arrow-scheme default opts =
   let r = List.fold-left (fun t f -> (f t)) default opts in
@@ -444,8 +455,12 @@ let make-padding-of-last-row-zero t-list =
 %let out-padding (p-l,p-r,p-t,p-b) = 
 %   display-message (`(` ^ (l2s p-l) ^ `pt, ` ^ (l2s p-r) ^ `pt, ` ^ (l2s p-t) ^ `pt, ` ^ (l2s p-b) ^ `pt)`)
 
-let matrixcd ctx lst =
-  let padding = 20pt in
+let matrixcd ctx os lst =
+  let default-options = (|
+    row-sep = 40pt;
+    column-sep = 40pt;
+  |) in
+  let opts = List.fold-left (fun t f -> (f t)) default-options (match os with |None -> [] | Some(l) -> l) in
   let (table-list,arrow-list,_,_) = List.fold-left (fun (t-list,a-list,(x,y),cr) it -> (
     let () = ref-arrows <- [] in
     let () = ref-cr <- false in 
@@ -475,9 +490,9 @@ let matrixcd ctx lst =
     let hor-len = List.length r in
     List.mapi (fun hi ib -> (
       (
-        (if hi == 0 then 0pt else padding),% left
-        (if hi == hor-len - 1 then 0pt else padding),% right
-        (if vi == 0 then 0pt else padding *' 2.0),% top
+        (if hi == 0 then 0pt else (opts#column-sep *' 0.5)),% left
+        (if hi == hor-len - 1 then 0pt else (opts#column-sep *' 0.5)),% right
+        (if vi == 0 then 0pt else opts#row-sep),% top
         0pt %bottom
       ),inline-fil ++ ib ++ inline-fil)
     ) r
@@ -492,9 +507,9 @@ let matrixcd ctx lst =
    draw-arrows ctx xlst ylst horizontal-padding-list vertical-padding-list metric-list arrow-list
   ))
 
-let-math \matrixcd lst = text-in-math MathOrd (fun ctx -> matrixcd ctx lst)
-let-math \matrixcd-m lst = text-in-math MathOrd (fun ctx -> matrixcd ctx lst)
-let-inline ctx \matrixcd-t lst = matrixcd ctx lst
+let-math \matrixcd ?:opts lst = text-in-math MathOrd (fun ctx -> matrixcd ctx opts lst)
+let-math \matrixcd-m ?:opts lst = text-in-math MathOrd (fun ctx -> matrixcd ctx opts lst)
+let-inline ctx \matrixcd-t ?:opts lst = matrixcd ctx opts lst
 
 
 end
