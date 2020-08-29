@@ -440,55 +440,49 @@ let make-padding-of-last-row-zero t-list =
 
 let matrixcd ctx lst =
   let padding = 20pt in
-  let (table-list,arrow-list,metric-list,_,_,_) = List.fold-left (fun (t-list,a-list,metric-list,(x,y),cr,first-line) it ->(
+  let (table-list,arrow-list,_,_) = List.fold-left (fun (t-list,a-list,(x,y),cr) it -> (
     let () = ref-arrows <- [] in
     let () = ref-cr <- false in 
     let ib = read-inline ctx it in
     let next-cr = !ref-cr in
-    let met = get-natural-metrics ib in
-    % 外側のpaddingは0ptにする．
-    let pad-top = if first-line then 0pt else padding in
-    let pad-left = if cr then 0pt else padding in
-    let pad-right = if next-cr then 0pt else padding in
-    let pad-bottom = padding in
-    let pads = (pad-left,pad-right,pad-top,pad-bottom) in
-    let (new-t-list,new-metric-list) =
-      if cr then ((add-to-row (pads,inline-fil ++ ib ++ inline-fil) t-list),(add-to-row met metric-list))
-      else ((add-to-column (pads,inline-fil ++ ib ++ inline-fil) t-list),(add-to-column met metric-list))
+    let new-t-list =
+      if cr then (add-to-row ib t-list)
+      else (add-to-column ib t-list)
     in
     let (new-x,new-y) = if next-cr then (0,y + 1) else (x + 1,y) in
-    let append-a-list = List.map (fun t -> (
+    let new-a-list = List.append (List.map (fun t -> (
         let (fx,fy) = t#direction-from in
         let (tx,ty) = t#direction-to in
         (|t with 
           direction-from = (x + fx,y + fy);
           direction-to = (x + tx,y + ty);
         |)
-      )) !ref-arrows
+      )) !ref-arrows) a-list
     in
-    let new-a-list = List.append a-list append-a-list in
-    (new-t-list,new-a-list,new-metric-list,(new-x,new-y),next-cr,(first-line && (not next-cr)))
-  )) ([],[],[],(0,0),true,true) lst in
-  let correct-padding-table-list = make-padding-of-last-row-zero table-list in
-  let horizontal-padding-list = List.map (fun column -> 
+    (new-t-list,new-a-list,(new-x,new-y),next-cr)
+  )) ([],[],(0,0),true) lst in
+  let metric-list = List.map (fun r -> (
+    List.map (fun ib -> get-natural-metrics ib) r
+  )) table-list in
+  let ver-len = List.length table-list in
+  let cell-list = List.mapi (fun vi r -> (
+    let hor-len = List.length r in
+    List.mapi (fun hi ib -> (
+      (
+        (if hi == 0 then 0pt else padding),% left
+        (if hi == hor-len - 1 then 0pt else padding),% right
+        (if vi == 0 then 0pt else padding *' 2.0),% top
+        0pt %bottom
+      ),inline-fil ++ ib ++ inline-fil)
+    ) r
+  )) table-list in
+  let horizontal-padding-list = List.map (fun column -> (
     List.map (fun ((p-l,p-r,p-t,p-b),c) -> (p-l,p-r)) column
-  ) correct-padding-table-list in
-  let vertical-padding-list = List.map (fun column -> 
+  )) cell-list in
+  let vertical-padding-list = List.map (fun column -> (
     List.map (fun ((p-l,p-r,p-t,p-b),c) -> (p-b,p-t)) column % 値の小さい方を第一成分にする
-  ) correct-padding-table-list in
-%  let a = List.map (fun column -> (
-%    let () = display-message `column` in
-%    List.map (fun (p,c) -> (
-%      let () = out-padding p in
-%      1
-%    )) column
-%  )) correct-padding-table-list
-%  in
-  let table-cell-list = List.map (fun column -> 
-      List.map (fun (c) -> NormalCell(c)) column
-    ) correct-padding-table-list
-  in
-  tabular table-cell-list (fun xlst ylst -> (
+  )) cell-list in
+  tabular (List.map (fun r -> (List.map (fun c -> NormalCell(c))) r) cell-list) (fun xlst ylst -> (
    draw-arrows ctx xlst ylst horizontal-padding-list vertical-padding-list metric-list arrow-list
   ))
 
