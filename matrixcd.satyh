@@ -24,6 +24,8 @@ module MatrixCD : sig
   val dashed : arrow-option
   val mapsto : arrow-option
   val shift : (length * length) -> arrow-option
+  val shift-in : (length * length) -> arrow-option
+  val shift-out : (length * length) -> arrow-option
   val label : label-option list ?-> inline-text -> arrow-option
   val label-color : color -> label-option
   val swap : label-option
@@ -316,7 +318,11 @@ let draw-crossing-over ctx (startx,starty) (endx,endy) =
       |> close-with-line
   )]
 
-let draw-each-arrow ctx startpt endpt arrow-data lab =
+let draw-each-arrow ctx (startx,starty) (endx,endy) arrow-data lab =
+  let (shift-startx,shift-starty) = arrow-data#arrow-options#shift-out in
+  let (shift-endx,shift-endy) = arrow-data#arrow-options#shift-in in
+  let startpt = (startx +' shift-startx,starty +' shift-starty) in
+  let endpt = (endx +' shift-endx,endy +' shift-endy) in
   let arrow-graphics =
     let (tailpt,tail) = arrow-data#arrow-tail arrow-data#arrow-options startpt endpt ctx in
     let (headpt,head) = arrow-data#arrow-head arrow-data#arrow-options startpt endpt ctx in
