@@ -376,27 +376,43 @@ let draw-each-arrow ctx (startx,starty) (endx,endy) arrow-data lab =
     (List.append (List.append crossing-over-graphics arrow-graphics) label-graphics)
 
 
-let get-boundary-point (x,y) (obj-width,obj-height) (dirx,diry) =
+type boundary-pos = Left | Right | Top | Bottom
+let get-boundary-point x y leftx rightx bottomy topy (dirx,diry) =
   let dirx-f = Length.to-float dirx in
   let diry-f = Length.to-float diry in
   let d = sqrt (dirx-f *. dirx-f +. diry-f *. diry-f) in
   if Length.(dirx == 0pt) then 
-    (x,y +' ((obj-height *' 0.5) *' (sgn-length diry)))
+    if diry >' 0pt then (x,topy)
+    else (x,bottomy)
   else if Length.(diry == 0pt) then
-    (x +' (obj-width *' 0.5 *. (sgn-length dirx)),y)
+    if dirx >' 0pt then (rightx,y)
+    else (leftx,y)
   else
-    let point-slope = diry /' dirx in
-    let obj-slope = obj-height /' obj-width in
-    if Float.((abs-float point-slope) > (abs-float obj-slope)) then
-      (
-        x +' (obj-height *' 0.5 *. (1.0 /. point-slope) *. (sgn-length diry)),
-        y +' (obj-height *' 0.5 *. (sgn-length diry))
-      )
-    else
-      (
-        x +' (obj-width *' 0.5 *. (sgn-length dirx)),
-        y +' (obj-width *' 0.5 *. point-slope *. (sgn-length dirx))
-      )
+    % dirx != 0pt, diry != 0pt
+    let dir-slope = diry /' dirx in
+    let pos = 
+      if dirx >' 0pt && diry >' 0pt then
+        let slope = (topy -' y) /' (rightx -' x) in
+        if Float.(dir-slope > slope) then Top
+        else Right
+      else if dirx >' 0pt && diry <' 0pt then
+        let slope = (bottomy -' y) /' (rightx -' x) in
+        if Float.(dir-slope > slope) then Right
+        else Bottom
+      else if dirx <' 0pt && diry >' 0pt then
+        let slope = (topy -' y) /' (leftx -' x) in
+        if Float.(dir-slope > slope) then Left
+        else Top
+      else
+        let slope = (bottomy -' y) /' (leftx -' x) in
+        if Float.(dir-slope > slope) then Bottom
+        else Left
+    in
+    match pos with
+    | Left -> (leftx, y +' (leftx -' x) *' dir-slope)
+    | Right -> (rightx, y +' (rightx -' x) *' dir-slope)
+    | Top -> ((topy -' y) *' (1.0 /. dir-slope) +' x,topy)
+    | Bottom -> ((bottomy -' y) *' (1.0 /. dir-slope) +' x,bottomy)
 
 % 横方向みたいな変数名……
 let get-center coordlist padding index = 
@@ -411,7 +427,7 @@ let get-metric-from-list x y metric-list =
   |Some(c) -> (List.nth x c)
 
 let draw-arrows ctx coordxlist coordylist hor-padding-list ver-padding-list metric-list arrow-list =
-  let object-margin = 10pt in
+  let object-margin = 5pt in
   List.fold-left (fun lst t -> (
     let (startx,starty) = t#direction-from in
     let (endx,endy) = t#direction-to in
@@ -425,13 +441,20 @@ let draw-arrows ctx coordxlist coordylist hor-padding-list ver-padding-list metr
     let start-height = start-ht +' start-depth in
     let end-height = end-ht +' end-depth in
     let start-centerx = get-center coordxlist (get-padding-from-list hor-padding-list startx starty) startx in
+    let start-leftx = start-centerx -' (start-width *' 0.5) in
+    let start-rightx = start-centerx +' (start-width *' 0.5) in
     let (start-padding-v-b,start-padding-v-t) = (get-padding-from-list ver-padding-list startx starty) in
     let (end-padding-v-b,end-padding-v-t) = (get-padding-from-list ver-padding-list endx endy) in
-    let start-centery = (Option.from 0pt (List.nth (starty + 1) coordylist)) 
-      +' (start-height *' 0.5) +' start-padding-v-b in
+    let start-bottomy = (Option.from 0pt (List.nth (starty + 1) coordylist))  +' start-padding-v-b in
+    let start-topy = start-bottomy +' start-height in
+    % 3ptはあまり意味はない
+    let start-centery = start-bottomy +' 3pt in
     let end-centerx = get-center coordxlist (get-padding-from-list hor-padding-list endx endy) endx in
-    let end-centery = (Option.from 0pt (List.nth (endy + 1) coordylist))
-      +' (end-height *' 0.5) +' end-padding-v-b in
+    let end-leftx = end-centerx -' (end-width *' 0.5) in
+    let end-rightx = end-centerx +' (end-width *' 0.5) in
+    let end-bottomy = (Option.from 0pt (List.nth (endy + 1) coordylist))  +' end-padding-v-b in
+    let end-topy = end-bottomy +' end-height in
+    let end-centery = end-bottomy +' 3pt in
     let direction-vector = (start-centerx -' end-centerx, start-centery -' end-centery) in
     let direction-out = 
       match t#arrow-options#angle-out with
@@ -444,10 +467,18 @@ let draw-arrows ctx coordxlist coordylist hor-padding-list ver-padding-list metr
       | AbsoluteAngle(a) -> (1pt *' cos (to-radian a),1pt *' sin (to-radian a))
     in
     let (arrow-start-x,arrow-start-y) = 
-      get-boundary-point (start-centerx,start-centery) (start-width +' object-margin,start-height +' object-margin) direction-out
+      get-boundary-point
+        start-centerx start-centery
+        (start-leftx -' object-margin) (start-rightx +' object-margin)
+        (start-bottomy -' object-margin) (start-topy +' object-margin)
+        direction-out
     in
     let (arrow-end-x,arrow-end-y) = 
-      get-boundary-point (end-centerx,end-centery) (end-width +' object-margin,end-height +' object-margin)  direction-in
+      get-boundary-point
+        end-centerx end-centery
+        (end-leftx -' object-margin) (end-rightx +' object-margin)
+        (end-bottomy -' object-margin) (end-topy +' object-margin)
+        direction-in
     in
     List.append lst (draw-each-arrow ctx (arrow-start-x,arrow-start-y) (arrow-end-x,arrow-end-y) t t#label)
   )) [] arrow-list
