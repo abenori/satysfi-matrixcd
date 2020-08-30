@@ -26,6 +26,7 @@ module MatrixCD : sig
   val mapsto : arrow-option
   val hook : arrow-option
   val hook-swap : arrow-option
+  val twoheadrightarrow : arrow-option
   val shift : (length * length) -> arrow-option
   val shift-in : (length * length) -> arrow-option
   val shift-out : (length * length) -> arrow-option
@@ -152,7 +153,7 @@ let hook-arrow-tail swap opt (startx,starty) (endx,endy) ctx =
   in
   ((startx +' x,starty +' y),[stroke opt#thickness opt#color path])
 
-let normal-arrow-head opt (startx,starty) (endx,endy) ctx = 
+let-rec multiple-arrow-head count opt (startx,starty) (endx,endy) ctx = 
   let (x-f,y-f) = 
     match opt#angle-in with
     | RelativeAngle(a) ->
@@ -162,9 +163,19 @@ let normal-arrow-head opt (startx,starty) (endx,endy) ctx =
   in
   let d = sqrt (x-f *. x-f +. y-f *. y-f) in
   let pos = opt#thickness in
-  let arstpt = (endx +' pos *' (x-f /. d),endy +' pos *' (y-f /. d)) in
-  (arstpt,(Gr.arrow opt#thickness opt#color 4pt 1pt 4pt arstpt (endx,endy)))
+  let arstpt =
+    if count == 1 then  (endx +' pos *' (x-f /. d),endy +' pos *' (y-f /. d)) 
+    else (endx +' 2pt *' (x-f /. d),endy +' 2pt *' (y-f /. d))
+  in
+  let (endpt,g) =
+    if count == 1 then (arstpt,[])
+    else multiple-arrow-head (count - 1) opt (startx,starty) arstpt ctx
+  in
+  (arstpt,(List.append g (Gr.arrow opt#thickness opt#color 4pt 1pt 4pt arstpt (endx,endy))))
+
+let normal-arrow-head = multiple-arrow-head 1
 let none-arrow-head opt startpt endpt ctx = (endpt,[])
+let twoheadrightarrow-arrow-head = multiple-arrow-head 2
 
 let normal-arrow-body opt startpt endpt ctx = [stroke opt#thickness opt#color (Gr.line startpt endpt)]
 let dashed-arrow-body pattern opt startpt endpt ctx = [dashed-stroke opt#thickness pattern opt#color (Gr.line startpt endpt)]
@@ -222,6 +233,7 @@ let arrow-color c t = (|t with arrow-options = (|t#arrow-options with color = c;
 let label-color c t = (|t with color = c;|)
 
 let equal t = (|t with arrow-head = none-arrow-head;|)
+let twoheadrightarrow t = (|t with arrow-head = twoheadrightarrow-arrow-head;|)
 let dotted t = 
   (|t with 
     arrow-body = (fun opt -> dashed-arrow-body (opt#thickness,2pt,0pt) opt);
