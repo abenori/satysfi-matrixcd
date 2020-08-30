@@ -24,6 +24,8 @@ module MatrixCD : sig
   val dotted : arrow-option
   val dashed : arrow-option
   val mapsto : arrow-option
+  val hook : arrow-option
+  val hook-swap : arrow-option
   val shift : (length * length) -> arrow-option
   val shift-in : (length * length) -> arrow-option
   val shift-out : (length * length) -> arrow-option
@@ -130,6 +132,25 @@ let mapsto-arrow-tail opt (startx,starty) (endx,endy) ctx =
         |> terminate-path
       )
   ])
+let hook-arrow-tail swap opt (startx,starty) (endx,endy) ctx =
+  let radius = 1.5pt in
+  let (x,y) =
+    match opt#angle-out with
+    | AbsoluteAngle(a) -> (0pt -' radius *' cos (to-radian a),0pt -' radius *' sin (to-radian a))
+    | RelativeAngle(a) -> 
+      let (c,d) = rotate (startx -' endx,starty -' endy) (to-radian a) in
+      let (x-f,y-f) = (Length.to-float c, Length.to-float d) in
+      let d = sqrt (x-f *. x-f +. y-f *. y-f) in
+      (radius *' (x-f /. d), radius *' (y-f /. d))
+  in
+  let (cx,cy) = if swap then (startx +' x  +' y, starty +' y -' x) else (startx +' x  -' y, starty +' y +' x) in
+  let (tx,ty) = (x *' 0.55228, y *' 0.55228) in
+  let path = start-path (cx +' y,cy -' x)
+     |> bezier-to (cx +' y -' tx, cy -' x -' ty) (cx -' x +' ty, cy -' y -' tx) (cx -' x,cy -' y)
+     |> bezier-to (cx -' x -' ty,cy -' y +' tx) (cx -' y -' tx,cy +' x -' ty) (cx -' y, cy +' x)
+     |> terminate-path
+  in
+  ((startx +' x,starty +' y),[stroke opt#thickness opt#color path])
 
 let normal-arrow-head opt (startx,starty) (endx,endy) ctx = 
   let (x-f,y-f) = 
@@ -212,6 +233,8 @@ let dashed t =
     label-position = normal-label-position;
   |)
 let mapsto t = (|t with arrow-tail = mapsto-arrow-tail;|)
+let hook t = (|t with arrow-tail = (hook-arrow-tail false);|)
+let hook-swap t = (|t with arrow-tail = (hook-arrow-tail true);|)
 
 let row-sep l t = (|t with row-sep = l;|)
 let column-sep l t = (|t with column-sep = l;|)
@@ -227,7 +250,6 @@ let arrow = arrow-scheme (|
     arrow-options = (|
       color = Color.black;
       thickness = 0.5pt;
-      % 度数法……
       angle-in = RelativeAngle(0.0);
       angle-out = RelativeAngle(180.0);
       shift = (0pt,0pt);
@@ -460,7 +482,7 @@ let matrixcd ctx os lst =
     row-sep = 40pt;
     column-sep = 40pt;
   |) in
-  let opts = List.fold-left (fun t f -> (f t)) default-options (match os with |None -> [] | Some(l) -> l) in
+  let opts = List.fold-left (fun t f -> (f t)) default-options (Option.from [] os) in
   let (table-list,arrow-list,_,_) = List.fold-left (fun (t-list,a-list,(x,y),cr) it -> (
     let () = ref-arrows <- [] in
     let () = ref-cr <- false in 
