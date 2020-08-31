@@ -551,8 +551,11 @@ let matrixcd ctx os lst =
     List.map (fun ib -> get-natural-metrics ib) r
   )) table-list in
   let ver-len = List.length table-list in
+  let hor-len = List.fold-left (fun mx c ->(
+    let cur-len = List.length c in
+    if cur-len > mx then cur-len else mx
+  )) 0 table-list in
   let cell-list = List.mapi (fun vi r -> (
-    let hor-len = List.length r in
     List.mapi (fun hi ib -> (
       (
         (if hi == 0 then 0pt else (opts#column-sep *' 0.5)),% left
