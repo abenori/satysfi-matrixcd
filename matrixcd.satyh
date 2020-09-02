@@ -137,7 +137,7 @@ let hook-arrow-tail swap opt (startx,starty) (endx,endy) ctx =
   let radius = 1.5pt in
   let (x,y) =
     match opt#angle-out with
-    | AbsoluteAngle(a) -> (0pt -' radius *' cos (to-radian a),0pt -' radius *' sin (to-radian a))
+    | AbsoluteAngle(a) -> (radius *' cos (to-radian a),radius *' sin (to-radian a))
     | RelativeAngle(a) -> 
       let (c,d) = rotate (startx -' endx,starty -' endy) (to-radian a) in
       let (x-f,y-f) = (Length.to-float c, Length.to-float d) in
