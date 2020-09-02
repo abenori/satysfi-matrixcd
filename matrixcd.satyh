@@ -154,18 +154,19 @@ let hook-arrow-tail swap opt (startx,starty) (endx,endy) ctx =
   ((startx +' x,starty +' y),[stroke opt#thickness opt#color path])
 
 let-rec multiple-arrow-head count opt (startx,starty) (endx,endy) ctx = 
-  let (x-f,y-f) = 
+  let (x,y) = 
     match opt#angle-in with
-    | RelativeAngle(a) ->
-      let (x,y) = rotate (startx -' endx,starty -' endy) a in
-      (Length.to-float x,Length.to-float y)
     | AbsoluteAngle(a) -> (cos (to-radian a),sin (to-radian a))
+    | RelativeAngle(a) ->
+      let x-f = Length.to-float (startx -' endx) in
+      let y-f = Length.to-float (starty -' endy) in
+      let d = sqrt (x-f *. x-f +. y-f *. y-f) in
+      ((x-f /. d) *. (cos a) -. (y-f /. d) *. (sin a),(x-f /. d) *. (sin a) +. (y-f /. d) *. (cos a))
   in
-  let d = sqrt (x-f *. x-f +. y-f *. y-f) in
   let pos = opt#thickness in
   let arstpt =
-    if count == 1 then  (endx +' pos *' (x-f /. d),endy +' pos *' (y-f /. d)) 
-    else (endx +' 2pt *' (x-f /. d),endy +' 2pt *' (y-f /. d))
+    if count == 1 then  (endx +' pos *' x,endy +' pos *' y) 
+    else (endx +' 2pt *' x,endy +' 2pt *' y)
   in
   let (endpt,g) =
     if count == 1 then (arstpt,[])
@@ -177,7 +178,29 @@ let normal-arrow-head = multiple-arrow-head 1
 let none-arrow-head opt startpt endpt ctx = (endpt,[])
 let twoheadrightarrow-arrow-head = multiple-arrow-head 2
 
-let normal-arrow-body opt startpt endpt ctx = [stroke opt#thickness opt#color (Gr.line startpt endpt)]
+let arrow-body-path opt (startx,starty) (endx,endy) ctx =
+  let get-direction angle = match angle with
+    | AbsoluteAngle(a) -> (cos (to-radian a),sin (to-radian a))
+    | RelativeAngle(aa) ->
+      let x-f = Length.to-float (startx -' endx) in
+      let y-f = Length.to-float (starty -' endy) in
+      let d = sqrt (x-f *. x-f +. y-f *. y-f) in
+      let a = to-radian aa in
+      ((x-f /. d) *. (cos a) -. (y-f /. d) *. (sin a),(x-f /. d) *. (sin a) +. (y-f /. d) *. (cos a))
+  in
+  let (out-x,out-y) = get-direction opt#angle-out in
+  let (in-x,in-y) = get-direction opt#angle-in in
+  let x-f = Length.to-float (startx -' endx) in
+  let y-f = Length.to-float (starty -' endy) in
+  let d = sqrt (x-f *. x-f +. y-f *. y-f) in
+  let (ctr1x,ctr1y) = (startx +' 1pt *' (d *. 0.3) *. out-x,starty +' 1pt *' (d *. 0.3) *. out-y) in
+  let (ctr2x,ctr2y) = (endx +' 1pt *' (d *. 0.3) *. in-x,endy +' 1pt *' (d *. 0.3) *. in-y) in
+  start-path (startx,starty)
+    |> bezier-to (ctr1x,ctr1y) (ctr2x,ctr2y) (endx,endy)
+    |> terminate-path
+%  start-path (ctr2x,ctr2y) |> line-to (endx,endy) |> terminate-path
+
+let normal-arrow-body opt startpt endpt ctx = [stroke opt#thickness opt#color (arrow-body-path opt startpt endpt ctx)]
 let dashed-arrow-body pattern opt startpt endpt ctx = [dashed-stroke opt#thickness pattern opt#color (Gr.line startpt endpt)]
 let none-arrow-body opt startpt endpt ctx = []
 
@@ -495,27 +518,6 @@ let draw-arrows ctx coordxlist coordylist hor-padding-list ver-padding-list metr
     List.append lst (draw-each-arrow ctx (arrow-start-x,arrow-start-y) (arrow-end-x,arrow-end-y) t t#label)
   )) [] arrow-list
 
-let make-padding-of-last-row-zero t-list =
-  match List.last t-list with
-  | None -> [[]]
-  | Some(last-column) ->
-    let last-cell = 
-      match List.last last-column with
-      | None -> []
-      | Some((pad-l,pad-r,pad-t,pad-b),ib) -> [((pad-l,0pt,pad-t,0pt),ib)]
-    in
-    let last-cell-column =
-      match List.init last-column with
-      | None -> last-cell
-      | Some(l) -> List.append 
-        (List.map (fun ((pad-l,pad-r,pad-t,pad-b),ib) -> ((pad-l,pad-r,pad-t,0pt),ib)) l)
-        last-cell
-    in
-    match List.init t-list with
-    | None -> [last-cell-column]
-    | Some(l) -> List.append l [last-cell-column]
-
-
 %let l2s l = Float.to-string (Length.to-float l)
 %let out-padding (p-l,p-r,p-t,p-b) = 
 %   display-message (`(` ^ (l2s p-l) ^ `pt, ` ^ (l2s p-r) ^ `pt, ` ^ (l2s p-t) ^ `pt, ` ^ (l2s p-b) ^ `pt)`)
@@ -547,9 +549,7 @@ let matrixcd ctx os lst =
     in
     (new-t-list,new-a-list,(new-x,new-y),next-cr)
   )) ([],[],(0,0),true) lst in
-  let metric-list = List.map (fun r -> (
-    List.map (fun ib -> get-natural-metrics ib) r
-  )) table-list in
+  let metric-list = List.map (List.map get-natural-metrics) table-list in
   let ver-len = List.length table-list in
   let hor-len = List.fold-left (fun mx c ->(
     let cur-len = List.length c in
@@ -571,7 +571,7 @@ let matrixcd ctx os lst =
   let vertical-padding-list = List.map (fun column -> (
     List.map (fun ((p-l,p-r,p-t,p-b),c) -> (p-b,p-t)) column % 値の小さい方を第一成分にする
   )) cell-list in
-  tabular (List.map (fun r -> (List.map (fun c -> NormalCell(c))) r) cell-list) (fun xlst ylst -> (
+  tabular (List.map (List.map (fun c -> NormalCell(c))) cell-list) (fun xlst ylst -> (
    draw-arrows ctx xlst ylst horizontal-padding-list vertical-padding-list metric-list arrow-list
   ))
 
