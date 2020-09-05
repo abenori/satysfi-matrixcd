@@ -17,6 +17,9 @@ module MatrixCD : sig
   val from : string -> arrow-option
   val arrow-out : float -> arrow-option
   val arrow-in : float -> arrow-option
+  val bend : float -> arrow-option
+  val bend-right : arrow-option
+  val bend-left : arrow-option
   val phantom : arrow-option
   val equal : arrow-option
   val arrow-color : color -> arrow-option
@@ -62,7 +65,6 @@ type matrixcd-option = matrixcd-data -> matrixcd-data
 type arrow-option-data = (|
   color : color;
   thickness : length;
-  % 度数法……
   angle-in : arrow-angle;
   angle-out : arrow-angle;
   shift : length * length;
@@ -107,11 +109,36 @@ let sgn-length a = if a <' 0pt then (0.0-.1.0) else 1.0
 let abs-float a = if (1.0pt *' a) <' 0.0pt then 0.0 -. a else a
 
 % drawing arrows
-let normal-label-position opt (startx,starty) (endx,endy) position =
-  ((
-    startx *' (1.0 -. position) +' endx *' position,
-    starty *' (1.0 -. position) +' endy *' position
-  ),((endx -' startx),(endy -'starty)))
+let get-bezier-control-points opt (startx,starty) (endx,endy) =
+  let get-direction angle = match angle with
+    | AbsoluteAngle(a) -> (cos (to-radian a),sin (to-radian a))
+    | RelativeAngle(aa) ->
+      let x-f = Length.to-float (startx -' endx) in
+      let y-f = Length.to-float (starty -' endy) in
+      let d = sqrt (x-f *. x-f +. y-f *. y-f) in
+      let a = to-radian aa in
+      ((x-f /. d) *. (cos a) -. (y-f /. d) *. (sin a),(x-f /. d) *. (sin a) +. (y-f /. d) *. (cos a))
+  in
+  let (out-x,out-y) = get-direction opt#angle-out in
+  let (in-x,in-y) = get-direction opt#angle-in in
+  let x-f = Length.to-float (startx -' endx) in
+  let y-f = Length.to-float (starty -' endy) in
+  let d = sqrt (x-f *. x-f +. y-f *. y-f) in
+  (
+    (startx +' 1pt *' (d *. 0.3) *. out-x,starty +' 1pt *' (d *. 0.3) *. out-y),
+    (endx +' 1pt *' (d *. 0.3) *. in-x,endy +' 1pt *' (d *. 0.3) *. in-y)
+  )
+
+% ((x,y),(dirx,diry)): 位置と直線（接線）の方向ベクトル
+let normal-label-position opt (startx,starty) (endx,endy) pos =
+  let ((ctr1x,ctr1y),(ctr2x,ctr2y)) = get-bezier-control-points opt (startx,starty) (endx,endy) in
+  let (p1x,p1y) = (ctr1x *' pos +' startx *' (1.0 -. pos),ctr1y *' pos +' starty *' (1.0 -. pos)) in
+  let (p2x,p2y) = (ctr2x *' pos +' ctr1x *' (1.0 -. pos), ctr2y *' pos +' ctr1y *' (1.0 -. pos)) in
+  let (p3x,p3y) = (endx *' pos +' ctr2x *' (1.0 -. pos), endy *' pos +' ctr2y *' (1.0 -. pos)) in
+  let (p4x,p4y) = (p2x *' pos +' p1x *' (1.0 -. pos),p2y *' pos +' p1y *' (1.0 -. pos)) in
+  let (p5x,p5y) = (p3x *' pos +' p2x *' (1.0 -. pos),p3y *' pos +' p2y *' (1.0 -. pos)) in
+  let (rx,ry) = (p5x *' pos +' p4x *' (1.0 -. pos),p5y *' pos +' p4y *' (1.0 -. pos)) in
+  ((rx,ry),(p5x -' p4x,p5y -' p4y))
 
 % tailとheadはどこまで描いたかを返す．bodyにはこれらの点が始点・終点として渡される．
 let normal-arrow-tail opt startpt endpt ctx = (startpt,[])
@@ -157,7 +184,8 @@ let-rec multiple-arrow-head count opt (startx,starty) (endx,endy) ctx =
   let (x,y) = 
     match opt#angle-in with
     | AbsoluteAngle(a) -> (cos (to-radian a),sin (to-radian a))
-    | RelativeAngle(a) ->
+    | RelativeAngle(aa) ->
+      let a = to-radian aa in
       let x-f = Length.to-float (startx -' endx) in
       let y-f = Length.to-float (starty -' endy) in
       let d = sqrt (x-f *. x-f +. y-f *. y-f) in
@@ -173,32 +201,15 @@ let-rec multiple-arrow-head count opt (startx,starty) (endx,endy) ctx =
     else multiple-arrow-head (count - 1) opt (startx,starty) arstpt ctx
   in
   (arstpt,(List.append g (Gr.arrow opt#thickness opt#color 4pt 1pt 4pt arstpt (endx,endy))))
-
 let normal-arrow-head = multiple-arrow-head 1
 let none-arrow-head opt startpt endpt ctx = (endpt,[])
 let twoheadrightarrow-arrow-head = multiple-arrow-head 2
 
 let arrow-body-path opt (startx,starty) (endx,endy) ctx =
-  let get-direction angle = match angle with
-    | AbsoluteAngle(a) -> (cos (to-radian a),sin (to-radian a))
-    | RelativeAngle(aa) ->
-      let x-f = Length.to-float (startx -' endx) in
-      let y-f = Length.to-float (starty -' endy) in
-      let d = sqrt (x-f *. x-f +. y-f *. y-f) in
-      let a = to-radian aa in
-      ((x-f /. d) *. (cos a) -. (y-f /. d) *. (sin a),(x-f /. d) *. (sin a) +. (y-f /. d) *. (cos a))
-  in
-  let (out-x,out-y) = get-direction opt#angle-out in
-  let (in-x,in-y) = get-direction opt#angle-in in
-  let x-f = Length.to-float (startx -' endx) in
-  let y-f = Length.to-float (starty -' endy) in
-  let d = sqrt (x-f *. x-f +. y-f *. y-f) in
-  let (ctr1x,ctr1y) = (startx +' 1pt *' (d *. 0.3) *. out-x,starty +' 1pt *' (d *. 0.3) *. out-y) in
-  let (ctr2x,ctr2y) = (endx +' 1pt *' (d *. 0.3) *. in-x,endy +' 1pt *' (d *. 0.3) *. in-y) in
+  let ((ctr1x,ctr1y),(ctr2x,ctr2y)) = get-bezier-control-points opt (startx,starty) (endx,endy) in
   start-path (startx,starty)
     |> bezier-to (ctr1x,ctr1y) (ctr2x,ctr2y) (endx,endy)
     |> terminate-path
-%  start-path (ctr2x,ctr2y) |> line-to (endx,endy) |> terminate-path
 
 let normal-arrow-body opt startpt endpt ctx = [stroke opt#thickness opt#color (arrow-body-path opt startpt endpt ctx)]
 let dashed-arrow-body pattern opt startpt endpt ctx = [dashed-stroke opt#thickness pattern opt#color (Gr.line startpt endpt)]
@@ -239,6 +250,12 @@ let from s t = (|t with direction-from = (analyze-position s t#direction-from);|
 
 let arrow-out a t = (|t with arrow-options = (|t#arrow-options with angle-out = AbsoluteAngle(a);|)|)
 let arrow-in a t = (|t with arrow-options = (|t#arrow-options with angle-in = AbsoluteAngle(a);|)|)
+let bend f t = (|t with arrow-options = (|t#arrow-options with 
+  angle-in = RelativeAngle(f);
+  angle-out = RelativeAngle(180.0 -. f);
+|);|)
+let bend-right t = bend 30.0 t
+let bend-left t = bend (0.0 -. 30.0) t
 
 let shift p t = (|t with arrow-options = (|t#arrow-options with shift = p;|);|)
 let shift-in p t = (|t with arrow-options = (|t#arrow-options with shift-in = p;|);|)
