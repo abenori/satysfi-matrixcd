@@ -1,6 +1,7 @@
 @require: list
 @require: base/list-ext
 @require: base/length
+@require: base/float
 @require: gr
 @require: color
 
@@ -539,7 +540,20 @@ let draw-arrows ctx coordxlist coordylist hor-padding-list ver-padding-list metr
 %let out-padding (p-l,p-r,p-t,p-b) = 
 %   display-message (`(` ^ (l2s p-l) ^ `pt, ` ^ (l2s p-r) ^ `pt, ` ^ (l2s p-t) ^ `pt, ` ^ (l2s p-b) ^ `pt)`)
 
+let get-referenced-size s =
+  match get-cross-reference s with
+  | None -> 0pt
+  | Some(sl) -> (
+    match Float.of-string-opt sl with
+    | None -> 0pt
+    | Some(f) -> 1pt *' f
+  )
+
+let-mutable ref-matrixcd-count <- 0
+let get-matrixcd-reference-name s = `MatrixCD-matrixcd-count-` ^ s ^ `: ` ^ (arabic !ref-matrixcd-count)
+
 let matrixcd ctx os lst =
+  let () = ref-matrixcd-count <- !ref-matrixcd-count + 1 in
   let default-options = (|
     row-sep = 40pt;
     column-sep = 40pt;
@@ -572,13 +586,21 @@ let matrixcd ctx os lst =
     let cur-len = List.length c in
     if cur-len > mx then cur-len else mx
   )) 0 table-list in
+  let refname-l = get-matrixcd-reference-name `left` in
+  let refname-r = get-matrixcd-reference-name `right` in
+  let refname-t = get-matrixcd-reference-name `top` in
+  let refname-b = get-matrixcd-reference-name `bottom` in
+  let size-l = get-referenced-size refname-l in
+  let size-r = get-referenced-size refname-r in
+  let size-t = get-referenced-size refname-t in
+  let size-b = get-referenced-size refname-b in
   let cell-list = List.mapi (fun vi r -> (
     List.mapi (fun hi ib -> (
       (
-        (if hi == 0 then 0pt else (opts#column-sep *' 0.5)),% left
-        (if hi == hor-len - 1 then 0pt else (opts#column-sep *' 0.5)),% right
-        (if vi == 0 then 0pt else opts#row-sep),% top
-        0pt %bottom
+        (if hi == 0 then size-l else (opts#column-sep *' 0.5)),% left
+        (if hi == hor-len - 1 then size-r else (opts#column-sep *' 0.5)),% right
+        (if vi == 0 then size-t else (opts#row-sep *' 0.5)),% top
+        (if vi == ver-len - 1 then size-b else (opts#row-sep *' 0.5)) %bottom
       ),inline-fil ++ ib ++ inline-fil)
     ) r
   )) table-list in
@@ -589,7 +611,25 @@ let matrixcd ctx os lst =
     List.map (fun ((p-l,p-r,p-t,p-b),c) -> (p-b,p-t)) column % 値の小さい方を第一成分にする
   )) cell-list in
   tabular (List.map (List.map (fun c -> NormalCell(c))) cell-list) (fun xlst ylst -> (
-   draw-arrows ctx xlst ylst horizontal-padding-list vertical-padding-list metric-list arrow-list
+    let gr = draw-arrows ctx xlst ylst horizontal-padding-list vertical-padding-list metric-list arrow-list in
+    let left = (Option.from 0pt (List.head xlst) +' size-l) in
+    let right = (Option.from 0pt (List.last xlst) -' size-r)  in
+    let top = (Option.from 0pt (List.head ylst)  -' size-t) in
+    let bottom = (Option.from 0pt (List.last ylst) +' size-b) in
+    let (p-l,p-r,p-t,p-b) = List.fold-left (fun (l,r,t,b) g -> (
+      let ((bbminx,bbminy),(bbmaxx,bbmaxy)) = get-graphics-bbox g in
+      (
+        (if bbminx <' l then bbminx else l),
+        (if bbmaxx >' r then bbmaxx else r),
+        (if bbmaxy >' t then bbmaxy else t),
+        (if bbminy <' b then bbminy else b)
+      )
+    )) (left,right,top,bottom) gr in
+    let () = register-cross-reference refname-l (Float.to-string (Length.to-float (p-l -' left) )) in
+    let () = register-cross-reference refname-r (Float.to-string (Length.to-float (right -' p-r))) in
+    let () = register-cross-reference refname-t (Float.to-string (Length.to-float (p-t -' top))) in
+    let () = register-cross-reference refname-b (Float.to-string (Length.to-float (bottom -' p-b))) in
+    gr
   ))
 
 let-math \matrixcd ?:opts lst = text-in-math MathOrd (fun ctx -> matrixcd ctx opts lst)
