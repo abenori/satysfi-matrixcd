@@ -7,4 +7,6 @@
     ((package "matrixcd.satyh" "./matrixcd.satyh")
      ))
   (opam "satysfi-matrixcd.opam")
-  (dependencies ()))
+  (dependencies (
+    (base ())
+  )))
