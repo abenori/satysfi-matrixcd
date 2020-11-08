@@ -9,11 +9,11 @@ module MatrixCD : sig
   type label-option
   type arrow-option
   type matrixcd-option
-  val \matrixcd : [(matrixcd-option list)?; inline-text list] math-cmd
-  val \matrixcd-t : [(matrixcd-option list)?; inline-text list] inline-cmd
-  val \matrixcd-m : [(matrixcd-option list)?; inline-text list] math-cmd
-  val \arrow : [arrow-option list] inline-cmd
-  val \cr : [] inline-cmd
+  val \matrixcd : [(matrixcd-option list)?; math list] math-cmd
+  val \matrixcd-t : [(matrixcd-option list)?; math list] inline-cmd
+  val \matrixcd-m : [(matrixcd-option list)?; math list] math-cmd
+  val \arrow : [arrow-option list] math-cmd
+  val \cr : [] math-cmd
   val to : string -> arrow-option
   val from : string -> arrow-option
   val arrow-out : float -> arrow-option
@@ -294,7 +294,11 @@ let column-sep l t = (|t with column-sep = l;|)
 
 let arrow-scheme default opts =
   let r = List.fold-left (fun t f -> (f t)) default opts in
-  ref-arrows <- r :: !ref-arrows
+  let aux ctx =
+    let () = ref-arrows <- r :: !ref-arrows in
+    ${}
+  in
+  text-in-math MathOrd (fun ctx -> embed-math ctx (aux ctx))
 
 let arrow = arrow-scheme (|
     direction-to = (0,0);
@@ -317,14 +321,16 @@ let arrow = arrow-scheme (|
     label-position = normal-label-position;
   |)
 
+let-math \arrow opts =
+  let r = arrow opts in
+   r
 
-let-inline ctx \arrow opts =
-  let () = arrow opts in
-  inline-nil
-
-let-inline ctx \cr =
-  let () = ref-cr <- true in
-  inline-nil
+let-math \cr =
+  let aux =
+    let () = ref-cr <- true in
+    ${}
+  in
+  text-in-math MathOrd (fun ctx -> embed-math ctx aux)
 
 let add-to-column obj lst =
   let o = List.last lst in
@@ -562,7 +568,7 @@ let matrixcd ctx os lst =
   let (table-list,arrow-list,_,_) = List.fold-left (fun (t-list,a-list,(x,y),cr) it -> (
     let () = ref-arrows <- [] in
     let () = ref-cr <- false in 
-    let ib = read-inline ctx it in
+    let ib = embed-math ctx it in
     let next-cr = !ref-cr in
     let new-t-list =
       if cr then (add-to-row ib t-list)
