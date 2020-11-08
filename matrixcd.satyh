@@ -322,15 +322,14 @@ let arrow = arrow-scheme (|
   |)
 
 let-math \arrow opts =
-  let r = arrow opts in
-   r
+  arrow opts
 
 let-math \cr =
-  let aux =
+  let aux ctx =
     let () = ref-cr <- true in
     ${}
   in
-  text-in-math MathOrd (fun ctx -> embed-math ctx aux)
+  text-in-math MathOrd (fun ctx -> embed-math ctx (aux ctx))
 
 let add-to-column obj lst =
   let o = List.last lst in
