@@ -34,7 +34,7 @@ module MatrixCD : sig
   val shift : (length * length) -> arrow-option
   val shift-in : (length * length) -> arrow-option
   val shift-out : (length * length) -> arrow-option
-  val label : label-option list ?-> inline-text -> arrow-option
+  val label : label-option list ?-> math -> arrow-option
   val label-color : color -> label-option
   val swap : label-option
   val description : label-option
@@ -45,7 +45,7 @@ module MatrixCD : sig
 end = struct
 
 type label-data = (|
-  text : inline-text;
+  text : math;
   swap : bool;
   position : float;
   color : color;
@@ -346,7 +346,11 @@ let add-to-row obj lst = (List.append lst [[obj]])
 
 let draw-label ctx (posx,posy) (dirx,diry) label arrow-options =
   let font-size = (get-font-size ctx) *' (if arrow-options#phantom then 1.0 else 0.7) in
-  let lit = read-inline (ctx
+%  let lit = read-inline (ctx
+%    |> set-font-size font-size
+%    |> set-text-color label#color
+%  ) label#text in
+  let lit = embed-math (ctx
     |> set-font-size font-size
     |> set-text-color label#color
   ) label#text in
