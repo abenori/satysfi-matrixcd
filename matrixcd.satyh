@@ -9,9 +9,9 @@ module MatrixCD : sig
   type label-option
   type arrow-option
   type matrixcd-option
-  val \matrixcd : [(matrixcd-option list)?; math list] math-cmd
-  val \matrixcd-t : [(matrixcd-option list)?; math list] inline-cmd
-  val \matrixcd-m : [(matrixcd-option list)?; math list] math-cmd
+  val \matrixcd : [(matrixcd-option list)?; int?; math list] math-cmd
+  val \matrixcd-t : [(matrixcd-option list)?; int?; math list] inline-cmd
+  val \matrixcd-m : [(matrixcd-option list)?; int?; math list] math-cmd
   val \arrow : [arrow-option list] math-cmd
   val \cr : [] math-cmd
   val to : string -> arrow-option
@@ -561,7 +561,7 @@ let get-referenced-size s =
 let-mutable ref-matrixcd-count <- 0
 let get-matrixcd-reference-name s = `MatrixCD-matrixcd-count-` ^ s ^ `: ` ^ (arabic !ref-matrixcd-count)
 
-let matrixcd ctx os lst =
+let matrixcd ctx os linecnt lst =
   let () = ref-matrixcd-count <- !ref-matrixcd-count + 1 in
   let default-options = (|
     row-sep = 40pt;
@@ -572,7 +572,15 @@ let matrixcd ctx os lst =
     let () = ref-arrows <- [] in
     let () = ref-cr <- false in 
     let ib = embed-math ctx it in
-    let next-cr = !ref-cr in
+    let next-cr =
+      if !ref-cr then true
+      else match linecnt with
+        | None -> false
+        | Some(cnt) -> (
+          if (x + 1) == cnt then true
+          else false
+        )
+    in
     let new-t-list =
       if cr then (add-to-row ib t-list)
       else (add-to-column ib t-list)
@@ -641,9 +649,9 @@ let matrixcd ctx os lst =
     gr
   ))
 
-let-math \matrixcd ?:opts lst = text-in-math MathOrd (fun ctx -> matrixcd ctx opts lst)
-let-math \matrixcd-m ?:opts lst = text-in-math MathOrd (fun ctx -> matrixcd ctx opts lst)
-let-inline ctx \matrixcd-t ?:opts lst = matrixcd ctx opts lst
+let-math \matrixcd ?:opts ?:linecnt lst = text-in-math MathOrd (fun ctx -> matrixcd ctx opts linecnt lst)
+let-math \matrixcd-m ?:opts ?:linecnt lst = text-in-math MathOrd (fun ctx -> matrixcd ctx opts linecnt lst)
+let-inline ctx \matrixcd-t ?:opts ?:linecnt lst = matrixcd ctx opts linecnt lst
 
 
 end
