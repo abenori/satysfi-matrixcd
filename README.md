@@ -2,13 +2,15 @@
 
 `matrixcd` is a SATySFi package for drawing commutative diagram with a syntax similar to tikz-cd (LaTeX package)
 
-## Example
+## Installation
+The easiest way is to use [Satyrographos](https://github.com/na4zagin3/satyrographos) 
+
 ```
-\eqn(${
-  \MatrixCD.matrixcd!(open MatrixCD in {
-    | ${A}\arrow[to `rd`];  | ${B} \arrow[to `l`;label ?:[swap;description] {${f}};dotted]; \cr;
-    |  | ${C}\arrow[to `u`; label {${g}}; mapsto];
-  |})
-});
+opam install satysfi-matrixcd
+satyrographos install
 ```
 
+Another way is to put `matrixcd.saty` in the suitable directory.
+
+## Usage
+See (matrixcd-doc.pdf)[matrixcd-doc.pdf] (Currently it does not exist.)
