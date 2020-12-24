@@ -39,6 +39,7 @@ module MatrixCD : sig
   val swap : label-option
   val description : label-option
   val pos : float -> label-option
+  val sloped : label-option
   val row-sep : length -> matrixcd-option
   val column-sep : length -> matrixcd-option
 
@@ -50,6 +51,7 @@ type label-data = (|
   position : float;
   color : color;
   description : bool;
+  sloped : bool;
 |)
 
 type label-option = label-data -> label-data
@@ -223,6 +225,7 @@ let label ?:option it t =
     position = 0.5;
     color = Color.black;
     description = false;
+    sloped = false;
   |) in
   let s = Option.from [] option in
   let l = List.fold-left (fun lab f -> (f lab)) default-label s in
@@ -233,6 +236,7 @@ let label ?:option it t =
 let swap t = (|t with swap = true;|)
 let pos p t = (|t with position = p;|)
 let description t = (|t with description = true;|)
+let sloped t = (|t with sloped = true;|)
 
 let-rec analyze-position s def = 
   let len = string-length s in
@@ -346,22 +350,18 @@ let add-to-row obj lst = (List.append lst [[obj]])
 
 let draw-label ctx (posx,posy) (dirx,diry) label arrow-options =
   let font-size = (get-font-size ctx) *' (if arrow-options#phantom then 1.0 else 0.7) in
-%  let lit = read-inline (ctx
-%    |> set-font-size font-size
-%    |> set-text-color label#color
-%  ) label#text in
   let lit = embed-math (ctx
     |> set-font-size font-size
     |> set-text-color label#color
   ) label#text in
   let (width,height,depth) = get-natural-metrics lit in
+  let diffx = (if label#swap then (0.0 -. 1.0) else 1.0) *. Length.to-float dirx in
+  let diffy = (if label#swap then (0.0 -. 1.0) else 1.0) *. Length.to-float diry in
+  let distance = sqrt ((diffx *. diffx) +. (diffy *. diffy)) in
   let (x,y) = 
     if label#description || arrow-options#phantom then
       (posx -' (width *' 0.5), posy -' ((height -' depth) *' 0.5))
     else
-      let diffx = (if label#swap then (0.0 -. 1.0) else 1.0) *. Length.to-float dirx in
-      let diffy = (if label#swap then (0.0 -. 1.0) else 1.0) *. Length.to-float diry in
-      let distance = sqrt ((diffx *. diffx) +. (diffy *. diffy)) in
       let shiftx =
         (3pt *' diffy *. (0.0 -. 1.0) *. (1.0 /. distance)) -' (
           if ((not label#swap) && (diry <' 0pt) || ((label#swap) && (diry >' 0pt))) then 0pt
@@ -382,7 +382,15 @@ let draw-label ctx (posx,posy) (dirx,diry) label arrow-options =
       let adjusty = t *' diffy in
       (posx +' shiftx +' adjustx, posy +' shifty +' adjusty)
   in
-  let draw-graphic = [draw-text (x,y) lit] in
+  let draw-graphic = 
+    if label#sloped then [
+     draw-text (0pt -' (width *' 0.5), (depth -' height) *' 0.5) lit
+%     draw-text (0pt,0pt) lit
+        |> linear-transform-graphics (diffx /. distance) ((0.0 -. diffy) /. distance) (diffy /. distance) (diffx /. distance)
+%        |> linear-transform-graphics 0.0 (0.0 -. 1.0) 1.0 0.0
+        |> shift-graphics (x +' (width *' 0.5), y +' ((height -' depth) *' 0.5))
+    ] else [draw-text (x,y) lit]
+  in
   let padding = 2pt in
   let description-graphic = 
     if label#description then
@@ -611,6 +619,8 @@ let matrixcd ctx os linecnt lst =
   let size-r = get-referenced-size refname-r in
   let size-t = get-referenced-size refname-t in
   let size-b = get-referenced-size refname-b in
+%  let (size-l,size-r,size-t,size-b) = (0pt,0pt,0pt,0pt) in
+
   let cell-list = List.mapi (fun vi r -> (
     List.mapi (fun hi ib -> (
       (
