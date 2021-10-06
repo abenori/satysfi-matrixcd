@@ -385,9 +385,7 @@ let draw-label ctx (posx,posy) (dirx,diry) label arrow-options =
   let draw-graphic = 
     if label#sloped then [
      draw-text (0pt -' (width *' 0.5), (depth -' height) *' 0.5) lit
-%     draw-text (0pt,0pt) lit
         |> linear-transform-graphics (diffx /. distance) ((0.0 -. diffy) /. distance) (diffy /. distance) (diffx /. distance)
-%        |> linear-transform-graphics 0.0 (0.0 -. 1.0) 1.0 0.0
         |> shift-graphics (x +' (width *' 0.5), y +' ((height -' depth) *' 0.5))
     ] else [draw-text (x,y) lit]
   in
@@ -489,7 +487,7 @@ let get-center coordlist padding index =
   let left-c = Option.from 0pt (List.nth index coordlist) in
   let right-c = Option.from 0pt (List.nth (index + 1) coordlist) in
   let (left-p,right-p) = padding in
-  (right-c +' left-c +' left-p -' right-p) *' 0.5
+  ((left-c +' left-p) *' 0.5) +' ((right-c -' right-p) *' 0.5)
 
 let get-metric-from-list x y metric-list =
   match (List.nth y metric-list) with
@@ -497,7 +495,9 @@ let get-metric-from-list x y metric-list =
   |Some(c) -> (List.nth x c)
 
 let draw-arrows ctx coordxlist coordylist hor-padding-list ver-padding-list metric-list arrow-list =
+   let len-to-str n = Float.to-string (Length.to-float n) ^ `pt` in
   let object-margin = 5pt in
+%  let () = display-message ((Int.to-string (List.length coordxlist)) ^ `[[[[[[[[[[[[[[`) in 
   List.fold-left (fun lst t -> (
     let (startx,starty) = t#direction-from in
     let (endx,endy) = t#direction-to in
@@ -515,16 +515,37 @@ let draw-arrows ctx coordxlist coordylist hor-padding-list ver-padding-list metr
     let start-rightx = start-centerx +' (start-width *' 0.5) in
     let (start-padding-v-b,start-padding-v-t) = (get-padding-from-list ver-padding-list startx starty) in
     let (end-padding-v-b,end-padding-v-t) = (get-padding-from-list ver-padding-list endx endy) in
-    let start-bottomy = (Option.from 0pt (List.nth (starty + 1) coordylist))  +' start-padding-v-b in
-    let start-topy = start-bottomy +' start-height in
-    % 3ptはあまり意味はない
-    let start-centery = start-bottomy +' 3pt in
+    let get-baseline y =
+      let p-list = List.map (fun (a,_) -> a) (Option.from [] (List.nth y ver-padding-list)) in
+      let dep-list = List.map (fun (_,_,d) -> d) (Option.from [] (List.nth y metric-list)) in
+      let-rec aux n bl =
+        match (List.nth n p-list) with
+        | None -> bl
+        | Some(pad) -> (
+          match (List.nth n dep-list) with
+          | None -> bl
+          | Some(dep) -> (
+            let tmpbl = pad +' dep in
+            aux (n + 1) (
+              if Length.(tmpbl > bl) then tmpbl else bl
+            )
+          )
+        )
+      in
+      (aux 0 0pt) +' (Option.from 0pt (List.nth (y + 1) coordylist))
+    in
+    let y-shift = 3pt in
+    let start-baseline = get-baseline starty in
+    let end-baseline = get-baseline endy in
+    let start-bottomy = start-baseline -' start-depth in
+    let start-topy = start-baseline +' start-ht in
+    let start-centery = start-baseline +' y-shift in
     let end-centerx = get-center coordxlist (get-padding-from-list hor-padding-list endx endy) endx in
     let end-leftx = end-centerx -' (end-width *' 0.5) in
     let end-rightx = end-centerx +' (end-width *' 0.5) in
-    let end-bottomy = (Option.from 0pt (List.nth (endy + 1) coordylist))  +' end-padding-v-b in
-    let end-topy = end-bottomy +' end-height in
-    let end-centery = end-bottomy +' 3pt in
+    let end-bottomy = end-baseline -' end-depth in
+    let end-topy = end-baseline +' end-ht in
+    let end-centery = end-baseline +' y-shift in
     let direction-vector = (start-centerx -' end-centerx, start-centery -' end-centery) in
     let direction-out = 
       match t#arrow-options#angle-out with
@@ -553,9 +574,6 @@ let draw-arrows ctx coordxlist coordylist hor-padding-list ver-padding-list metr
     List.append lst (draw-each-arrow ctx (arrow-start-x,arrow-start-y) (arrow-end-x,arrow-end-y) t t#label)
   )) [] arrow-list
 
-%let l2s l = Float.to-string (Length.to-float l)
-%let out-padding (p-l,p-r,p-t,p-b) = 
-%   display-message (`(` ^ (l2s p-l) ^ `pt, ` ^ (l2s p-r) ^ `pt, ` ^ (l2s p-t) ^ `pt, ` ^ (l2s p-b) ^ `pt)`)
 
 let get-referenced-size s =
   match get-cross-reference s with
@@ -619,7 +637,6 @@ let matrixcd ctx os linecnt lst =
   let size-r = get-referenced-size refname-r in
   let size-t = get-referenced-size refname-t in
   let size-b = get-referenced-size refname-b in
-%  let (size-l,size-r,size-t,size-b) = (0pt,0pt,0pt,0pt) in
 
   let cell-list = List.mapi (fun vi r -> (
     List.mapi (fun hi ib -> (
@@ -657,6 +674,14 @@ let matrixcd ctx os linecnt lst =
     let () = register-cross-reference refname-t (Float.to-string (Length.to-float (p-t -' top))) in
     let () = register-cross-reference refname-b (Float.to-string (Length.to-float (bottom -' p-b))) in
     gr
+%    let xmin = Option.from 0pt (List.head xlst) in
+%    let xmax = Option.from 0pt (List.last xlst) in
+%    let ymin = Option.from 0pt (List.head ylst) in
+%    let ymax = Option.from 0pt (List.last ylst) in
+%    List.append gr (List.append
+%      (List.map (fun x -> (stroke 1pt Color.black (start-path (x,ymin) |> line-to (x,ymax) |> terminate-path))) xlst)
+%      (List.map (fun y -> (stroke 1pt Color.black (start-path (xmin,y) |> line-to (xmax,y) |> terminate-path))) ylst)
+%    )
   ))
 
 let-math \matrixcd ?:opts ?:linecnt lst = text-in-math MathOrd (fun ctx -> matrixcd ctx opts linecnt lst)
