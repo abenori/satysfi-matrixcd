@@ -534,7 +534,7 @@ let draw-arrows ctx coordxlist coordylist hor-padding-list ver-padding-list metr
       in
       (aux 0 0pt) +' (Option.from 0pt (List.nth (y + 1) coordylist))
     in
-    let y-shift = 3pt in
+    let y-shift = 3pt in % 特に意味はない
     let start-baseline = get-baseline starty in
     let end-baseline = get-baseline endy in
     let start-bottomy = start-baseline -' start-depth in
