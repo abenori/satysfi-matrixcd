@@ -7,7 +7,7 @@ maintainer: "Noriyuki Abe"
 homepage: "https://github.com/abenori/satysfi-matrixcd/"
 bug-reports: "https://github.com/abenori/satysfi-matrixcd/issues"
 dev-repo: "git+https://github.com/abenori/satysfi-matrixcd.git"
-license: "BSD-2-Clause-FreeBSD"
+license: "BSD-2-Clause-Views"
 depends: [
   "satysfi" {>= "0.0.6" & < "0.0.7"}
   "satysfi-base" {>= "1.3.0" & < "1.5.0"}
@@ -16,7 +16,7 @@ depends: [
 build: [ ]
 install: [
   ["satyrographos" "opam" "install"
-   "-name" "matrixcd"
-   "-prefix" "%{prefix}%"
-   "-script" "%{build}%/Satyristes"]
+   "--name" "matrixcd"
+   "--prefix" "%{prefix}%"
+   "--script" "%{build}%/Satyristes"]
 ]
