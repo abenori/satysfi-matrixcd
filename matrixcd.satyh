@@ -215,7 +215,7 @@ let arrow-body-path opt (startx,starty) (endx,endy) ctx =
     |> terminate-path
 
 let normal-arrow-body opt startpt endpt ctx = [stroke opt#thickness opt#color (arrow-body-path opt startpt endpt ctx)]
-let dashed-arrow-body pattern opt startpt endpt ctx = [dashed-stroke opt#thickness pattern opt#color (Gr.line startpt endpt)]
+let dashed-arrow-body pattern opt startpt endpt ctx = [dashed-stroke opt#thickness pattern opt#color (arrow-body-path opt startpt endpt ctx)]
 let none-arrow-body opt startpt endpt ctx = []
 
 let label ?:option it t = 
