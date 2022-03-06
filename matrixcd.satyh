@@ -2,6 +2,7 @@
 @require: base/list-ext
 @require: base/length
 @require: base/float
+@require: base/string
 @require: gr
 @require: color
 
@@ -494,86 +495,186 @@ let get-metric-from-list x y metric-list =
   |None -> None
   |Some(c) -> (List.nth x c)
 
-let draw-arrows ctx coordxlist coordylist hor-padding-list ver-padding-list metric-list arrow-list =
-   let len-to-str n = Float.to-string (Length.to-float n) ^ `pt` in
-  let object-margin = 5pt in
-%  let () = display-message ((Int.to-string (List.length coordxlist)) ^ `[[[[[[[[[[[[[[`) in 
+
+type position = 
+  | Position-Coordinate of int * int
+  | Position-Name of string
+
+let arrow-list-to-graphic-pos-funcs arrow-data =
+  let gr-func ctx startpt endpt =
+    let arrow-graphics =
+      let (tailpt,tail) = arrow-data#arrow-tail arrow-data#arrow-options startpt endpt ctx in
+      let (headpt,head) = arrow-data#arrow-head arrow-data#arrow-options startpt endpt ctx in
+      let body = arrow-data#arrow-body arrow-data#arrow-options tailpt headpt ctx in
+      List.append (List.append tail body) head
+    in
+    let crossing-over-graphics = 
+      if arrow-data#crossing-over then draw-crossing-over ctx startpt endpt 
+      else []
+    in
+    let (label-graphics,name-list) = List.fold-left 
+      (fun (lst,nplst) l -> (
+        let (pospt,dir) = arrow-data#label-position arrow-data#arrow-options startpt endpt l#position in
+        let namepos = match l#position-name with
+          | None -> []
+          | Some(str) -> [(str,pospt)]
+        in
+        (
+          (List.append (draw-label ctx pospt dir l arrow-data#arrow-options) lst),
+          (List.append namepos nplst)
+        )
+      ))
+    ([],[]) arrow-data#label in
+    (
+      (List.map (fun g -> (shift-graphics arrow-data#arrow-options#shift g))
+        (List.append (List.append crossing-over-graphics arrow-graphics) label-graphics)),
+      name-list
+    )
+  in
+  (gr-func,arrow-data#direction-from,arrow-data#direction-to)
+
+
+% 射の情報から，((fun ctx from to -> (graphics,list,name-popsition-list)),from,to)のリストを作る
+% name-position-listは{name: string,position: length*length]のリスト
+let arrow-list-to-graphic-funcs-pos arrow-list =
   List.fold-left (fun lst t -> (
-    let (startx,starty) = t#direction-from in
-    let (endx,endy) = t#direction-to in
+    List.append lst [(arrow-list-to-graphic-pos-funcs t)]
+  )) [] arrow-list
+
+
+% 処理手順
+% 射の情報から，((fun ctx from to -> (graphics list,priority,name-popsition-list)),from,to)のリストを作る
+% name-position-listは(name: string,position: length*length,size: length*length*length)のリスト
+% 名前がついた場所（ラベル）の中心点と(width,height,depth)を示す．
+
+
+
+let get-arrow-in-out-position coordxlist coordylist hor-padding-list ver-padding-list metric-list name-list pos =
+  match pos with
+  | Position-Name(name) -> (
+    match List.find (fun (str,_,_) -> (string-same str name)) name-list with
+    | None -> None
+    | Some(s,a,b) -> Some(a,b)
+  )
+  | Position-Coordinate(x,y) -> (
     let get-padding-from-list p-list x y =
       Option.from (0pt,0pt) (List.nth x (
         Option.from [] (List.nth y p-list)
       ))
     in
-    let (start-width,start-ht,start-depth) = Option.from (0pt,0pt,0pt) (get-metric-from-list startx starty metric-list) in
-    let (end-width,end-ht,end-depth) = Option.from (0pt,0pt,0pt) (get-metric-from-list endx endy metric-list) in
-    let start-height = start-ht +' start-depth in
-    let end-height = end-ht +' end-depth in
-    let start-centerx = get-center coordxlist (get-padding-from-list hor-padding-list startx starty) startx in
-    let start-leftx = start-centerx -' (start-width *' 0.5) in
-    let start-rightx = start-centerx +' (start-width *' 0.5) in
-    let (start-padding-v-b,start-padding-v-t) = (get-padding-from-list ver-padding-list startx starty) in
-    let (end-padding-v-b,end-padding-v-t) = (get-padding-from-list ver-padding-list endx endy) in
-    let get-baseline y =
-      let p-list = List.map (fun (a,_) -> a) (Option.from [] (List.nth y ver-padding-list)) in
-      let dep-list = List.map (fun (_,_,d) -> d) (Option.from [] (List.nth y metric-list)) in
-      let-rec aux n bl =
-        match (List.nth n p-list) with
+    let (width,ht,dp) = Option.from (0pt,0pt,0pt) (get-metric-from-list x y metric-list) in
+    let height = ht +' dp in
+    let centerx = get-center coordxlist (get-padding-from-list hor-padding-list x y) x in
+    let p-list = List.map (fun (a,_) -> a) (Option.from [] (List.nth y ver-padding-list)) in
+    let dep-list = List.map (fun (_,_,d) -> d) (Option.from [] (List.nth y metric-list)) in
+    let-rec aux n bl =
+      match (List.nth n p-list) with
+      | None -> bl
+      | Some(pad) -> (
+        match (List.nth n dep-list) with
         | None -> bl
-        | Some(pad) -> (
-          match (List.nth n dep-list) with
-          | None -> bl
-          | Some(dep) -> (
-            let tmpbl = pad +' dep in
-            aux (n + 1) (
-              if Length.(tmpbl > bl) then tmpbl else bl
-            )
+        | Some(dep) -> (
+          let tmpbl = pad +' dep in
+          aux (n + 1) (
+            if Length.(tmpbl > bl) then tmpbl else bl
           )
         )
-      in
-      (aux 0 0pt) +' (Option.from 0pt (List.nth (y + 1) coordylist))
+      )
     in
-    let y-shift = 3pt in % 特に意味はない
-    let start-baseline = get-baseline starty in
-    let end-baseline = get-baseline endy in
-    let start-bottomy = start-baseline -' start-depth in
-    let start-topy = start-baseline +' start-ht in
-    let start-centery = start-baseline +' y-shift in
-    let end-centerx = get-center coordxlist (get-padding-from-list hor-padding-list endx endy) endx in
-    let end-leftx = end-centerx -' (end-width *' 0.5) in
-    let end-rightx = end-centerx +' (end-width *' 0.5) in
-    let end-bottomy = end-baseline -' end-depth in
-    let end-topy = end-baseline +' end-ht in
-    let end-centery = end-baseline +' y-shift in
-    let direction-vector = (start-centerx -' end-centerx, start-centery -' end-centery) in
-    let direction-out = 
-      match t#arrow-options#angle-out with
-      | RelativeAngle(a) -> rotate direction-vector (to-radian a)
-      | AbsoluteAngle(a) -> (1pt *' cos (to-radian a),1pt *' sin (to-radian a))
-    in
-    let direction-in = 
-      match t#arrow-options#angle-in with
-      | RelativeAngle(a) -> rotate direction-vector (to-radian a)
-      | AbsoluteAngle(a) -> (1pt *' cos (to-radian a),1pt *' sin (to-radian a))
-    in
-    let (arrow-start-x,arrow-start-y) = 
-      get-boundary-point
-        start-centerx start-centery
-        (start-leftx -' object-margin) (start-rightx +' object-margin)
-        (start-bottomy -' object-margin) (start-topy +' object-margin)
-        direction-out
-    in
-    let (arrow-end-x,arrow-end-y) = 
-      get-boundary-point
-        end-centerx end-centery
-        (end-leftx -' object-margin) (end-rightx +' object-margin)
-        (end-bottomy -' object-margin) (end-topy +' object-margin)
-        direction-in
-    in
-    List.append lst (draw-each-arrow ctx (arrow-start-x,arrow-start-y) (arrow-end-x,arrow-end-y) t t#label)
-  )) [] arrow-list
+    let baseline = (aux 0 0pt) +' (Option.from 0pt (List.nth (y + 1) coordylist)) in
+    Some((centerx,baseline),(width,ht,dp))
+  )
 
+let get-arrow-from-to
+  ((from-x,from-y),(from-width,from-height,from-depth)) from-angle
+  ((to-x,  to-y)  ,(to-width,  to-height,  to-depth  )) to-angle =
+  let object-margin = 5pt in
+  let from-left = from-x -' (from-width *' 0.5) in
+  let from-right = from-x +' (from-width *' 0.5) in
+  let to-left = to-x -' (to-width *' 0.5) in
+  let to-right = to-x +' (to-width *' 0.5) in
+  let from-top = from-y +' from-height in
+  let from-bottom = from-y +' from-depth in
+  let to-top = to-y +' to-height in
+  let to-bottom = to-y +' to-depth in
+  let direction-vector = (from-x -' to-x, (from-top +' from-bottom) *' 0.5 -' (to-top +' to-bottom) *' 0.5) in
+  let direction-out = 
+    match from-angle with
+    | RelativeAngle(a) -> rotate direction-vector (to-radian a)
+    | AbsoluteAngle(a) -> (1pt *' cos (to-radian a),1pt *' sin (to-radian a))
+  in
+  let direction-in = 
+    match to-angle with
+    | RelativeAngle(a) -> rotate direction-vector (to-radian a)
+    | AbsoluteAngle(a) -> (1pt *' cos (to-radian a),1pt *' sin (to-radian a))
+  in
+  let (arrow-start-x,arrow-start-y) = 
+    get-boundary-point
+      from-x ((from-top +' from-bottom) *' 0.5)
+      (from-left -' object-margin) (from-right +' object-margin)
+      (from-bottom -' object-margin) (from-top +' object-margin)
+      direction-out
+  in
+  let (arrow-end-x,arrow-end-y) = 
+    get-boundary-point
+      to-x ((to-top +' to-bottom) *' 0.5)
+      (to-left -' object-margin) (to-right +' object-margin)
+      (to-bottom -' object-margin) (to-top +' object-margin)
+      direction-in
+  in
+  ((arrow-start-x,arrow-start-y),(arrow-end-x,arrow-end-y))
+
+type gr-data =
+  | BeforeDraw of 
+    (context -> (length*length) -> (length*length) -> ((graphics list) * int * (string*(length*length)*(length*length*length))list))
+    * (position * arrow-angle) * (position * arrow-angle)
+  | AfterDraw of (graphics list * int)
+
+let-rec draw-arrows-aux ctx position target-list name-list =
+  % drawed: 描画が今回行われた（リストが更新された）
+  let (new-target-list,new-name-list,drawed,done) =
+    List.fold-left (fun (tlst,nlst,drwd,don) target -> (
+      match target with
+      | AfterDraw(gr) -> (List.cons (AfterDraw(gr)) tlst,nlst,drwd,don)
+      | BeforeDraw(gr-func,(from,from-angle),(to,to-angle)) -> (
+        match position name-list from with
+        | None -> (List.cons (BeforeDraw(gr-func,(from,from-angle),(to,to-angle))) tlst,nlst,drwd,false)
+        | Some(from-pos) ->(
+          match position name-list to with 
+          | None -> (List.cons (BeforeDraw(gr-func,(from,from-angle),(to,to-angle))) tlst,nlst,drwd,false)
+          | Some(to-pos) -> (
+            let (arrow-from,arrow-to) = get-arrow-from-to from-pos from-angle to-pos to-angle in
+            let (cur-gr,priority,cur-nl) = gr-func ctx arrow-from arrow-to in
+            (List.cons (AfterDraw(cur-gr,priority)) tlst,List.append nlst cur-nl,true,don)
+          )
+        )
+      )
+    )) ([],[],false,true) target-list
+  in
+  if done then List.fold-left (fun gt g -> (
+    match g with 
+    | BeforeDraw(a,b,c) -> (
+      let () = abort-with-message `unexpected BeforeDraw, a bug` in
+      []
+    )
+    | AfterDraw(gr) -> List.cons gr gt
+  )) [] new-target-list 
+  else 
+    if drawed then draw-arrows-aux ctx position new-target-list new-name-list
+    else (
+      let () = abort-with-message `failed to resolve names` in
+      []
+    )
+
+let draw-arrows-tmp ctx coordxlist coordylist hor-padding-list ver-padding-list metric-list arrow-list =
+  let target-list = arrow-list-to-graphic-funcs-pos arrow-list in
+  let object-margin = 5pt in
+  let position = get-arrow-in-out-position coordxlist coordylist hor-padding-list ver-padding-list metric-list in
+  let gr-list = draw-arrows-aux ctx position target-list [] in
+  0
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 let get-referenced-size s =
   match get-cross-reference s with
