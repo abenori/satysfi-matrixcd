@@ -26,6 +26,7 @@ module MatrixCD : sig
   val bend-left : arrow-option
   val phantom : arrow-option
   val dash : arrow-option
+  val imply : arrow-option
   val arrow-color : color -> arrow-option
   val crossing-over : arrow-option
   val dotted : arrow-option
@@ -85,16 +86,20 @@ type arrow-option-data = (|
   phantom : bool;
 |)
 
+type arrow-shape = 
+  | ArrowShape of arrow-option-data -> length * length -> length * length -> context -> graphics list
+  | ArrowTailBodyHead of
+    (arrow-option-data -> length * length -> length * length -> context -> (length * length) * graphics list) * 
+    (arrow-option-data -> length * length -> length * length -> context -> graphics list) *
+    (arrow-option-data -> length * length -> length * length -> context -> (length * length) * graphics list)
+
 type arrow-data = (|
   direction-to : position;
   direction-from : position;
   label : label-data list;
   arrow-options : arrow-option-data;
   crossing-over : bool;
-  arrow : arrow-option-data -> length * length -> length * length -> context -> graphics list;
-%  arrow-tail : arrow-option-data -> length * length -> length * length -> context -> (length * length) * graphics list;
-%  arrow-head  : arrow-option-data -> length * length -> length * length -> context -> (length * length) * graphics list;
-%  arrow-body  : arrow-option-data -> length * length -> length * length -> context -> graphics list;
+  arrow : arrow-shape;
   label-position : arrow-option-data -> length * length -> length * length -> float -> (length * length) * (length * length);
 |)
 
@@ -235,6 +240,39 @@ let arrow-body-path opt (startx,starty) (endx,endy) ctx =
 let normal-arrow-body opt startpt endpt ctx = [stroke opt#thickness opt#color (arrow-body-path opt startpt endpt ctx)]
 let dashed-arrow-body pattern opt startpt endpt ctx = [dashed-stroke opt#thickness pattern opt#color (arrow-body-path opt startpt endpt ctx)]
 let none-arrow-body opt startpt endpt ctx = []
+% from standard Gr library
+let arrow-tip-from-standard-graphic color lenL lenM lenP (x,y) (dirx,diry) =
+  let (cx, cy) = (x -' lenL *' dirx, y -' lenL *' diry) in
+  let (mx, my) = (x -' lenM *' dirx, y -' lenM *' diry) in
+  let (p1, q1) = (cx +' lenP *' diry, cy -' lenP *' dirx) in
+  let (p2, q2) = (cx -' lenP *' diry, cy +' lenP *' dirx) in
+  [
+    fill color (Gr.polygon (x,y) [(p1, q1); (mx, my); (p2, q2)]);
+  ]
+% Gr.arrow (線の太さ) (色)  (先っぽの長さ？) (先から手元までの長さ？) (開き？)
+%  Gr.arrow 1pt Color.black 4pt 1pt 4pt startpt startpt
+
+let arrow-imply opt (startx,starty) (endx,endy) ctx =
+  % Gr.arrowを参考
+  % 矢印の向き（start -> endの長さ1のベクトル）
+  let (dirx,diry) = 
+    match opt#angle-in with
+    | AbsoluteAngle(a) -> (0.0 -. cos (to-radian a),0.0 -. sin (to-radian a))
+    | RelativeAngle(aa) ->
+      let a = to-radian aa in
+      let x-f = Length.to-float (endx -' startx) in
+      let y-f = Length.to-float (endy -' starty) in
+      let d = sqrt (x-f *. x-f +. y-f *. y-f) in
+      ((x-f /. d) *. (cos a) -. (y-f /. d) *. (sin a),(x-f /. d) *. (sin a) +. (y-f /. d) *. (cos a))
+  in
+  let gr-tip = arrow-tip-from-standard-graphic opt#color 4pt 1pt 4pt (endx,endy) (dirx,diry) in
+  let len = 1pt in
+  List.append [
+    stroke opt#thickness opt#color 
+      (Gr.line (startx -' len *' diry,starty +' len *' dirx) (endx -' len *' (dirx +. diry),endy -' len *' (diry -. dirx)));
+    stroke opt#thickness opt#color 
+      (Gr.line (startx +' len *' diry,starty -' len *' dirx) (endx -' len *' (dirx -. diry),endy -' len *' (diry +. dirx)));
+  ] gr-tip
 
 let label ?:option it t = 
   let default-label = (|
@@ -298,7 +336,7 @@ let shift-in p t = (|t with arrow-options = (|t#arrow-options with shift-in = p;
 let shift-out p t = (|t with arrow-options = (|t#arrow-options with shift-out = p;|);|)
 
 let phantom t = (|t with 
-  arrow = arrow-combine none-arrow-tail none-arrow-body none-arrow-head;
+  arrow = ArrowTailBodyHead(none-arrow-tail,none-arrow-body,none-arrow-head);
   arrow-options = (|t#arrow-options with phantom = true;|)
 |)
 
@@ -307,23 +345,31 @@ let arrow-color c t = (|t with arrow-options = (|t#arrow-options with color = c;
 let label-color c t = (|t with color = c;|)
 let label-name s t = (|t with name = Some(s);|)
 
-let dash t = (|t with arrow = arrow-combine normal-arrow-tail normal-arrow-body none-arrow-head;|)
-let twoheadrightarrow t = (|t with arrow = 
-  arrow-combine normal-arrow-tail normal-arrow-body twoheadrightarrow-arrow-head;
-|)
+let arrow-change-tail t tail body head =
+  match t#arrow with
+  | ArrowShape(_) -> (|t with arrow = ArrowTailBodyHead(tail,body,head);|)
+  | ArrowTailBodyHead(ta,bo,he) -> (|t with arrow = ArrowTailBodyHead(tail,bo,he);|)
+let arrow-change-body t tail body head =
+  match t#arrow with
+  | ArrowShape(_) -> (|t with arrow = ArrowTailBodyHead(tail,body,head);|)
+  | ArrowTailBodyHead(ta,bo,he) -> (|t with arrow = ArrowTailBodyHead(ta,body,he);|)
+let arrow-change-head t tail body head =
+  match t#arrow with
+  | ArrowShape(_) -> (|t with arrow = ArrowTailBodyHead(tail,body,head);|)
+  | ArrowTailBodyHead(ta,bo,he) -> (|t with arrow = ArrowTailBodyHead(ta,bo,head);|)
+
+let dash t = arrow-change-head t normal-arrow-tail normal-arrow-body none-arrow-head 
+let twoheadrightarrow t = arrow-change-head t normal-arrow-tail normal-arrow-body twoheadrightarrow-arrow-head
 let dotted t = 
-  (|t with 
-    arrow = arrow-combine normal-arrow-tail (fun opt -> dashed-arrow-body (opt#thickness,2pt,0pt) opt) normal-arrow-head;
-    label-position = normal-label-position;
-  |)
+  let tt = arrow-change-body t normal-arrow-tail (fun opt -> dashed-arrow-body (opt#thickness,2pt,0pt) opt) normal-arrow-head in
+  (|tt with label-position = normal-label-position;|)
 let dashed t = 
-  (|t with
-    arrow = arrow-combine normal-arrow-tail (fun opt -> dashed-arrow-body (1pt,3pt,0pt) opt) normal-arrow-head;
-    label-position = normal-label-position;
-  |)
-let mapsto t = (|t with arrow = arrow-combine mapsto-arrow-tail normal-arrow-body normal-arrow-head;|)
-let hook t = (|t with arrow = arrow-combine (hook-arrow-tail false) normal-arrow-body normal-arrow-head;|)
-let hook-swap t = (|t with arrow = arrow-combine (hook-arrow-tail true) normal-arrow-body normal-arrow-head;|)
+  let tt = arrow-change-body t normal-arrow-tail (fun opt -> dashed-arrow-body (1pt,3pt,0pt) opt) normal-arrow-head in
+  (|tt with label-position = normal-label-position;|)
+let mapsto t = arrow-change-tail t mapsto-arrow-tail normal-arrow-body normal-arrow-head
+let hook t = arrow-change-tail t (hook-arrow-tail false) normal-arrow-body normal-arrow-head
+let hook-swap t = arrow-change-tail t (hook-arrow-tail true) normal-arrow-body normal-arrow-head
+let imply t = (|t with arrow = ArrowShape(arrow-imply);|)
 
 let row-sep l t = (|t with row-sep = l;|)
 let column-sep l t = (|t with column-sep = l;|)
@@ -351,7 +397,7 @@ let arrow = arrow-scheme (|
       phantom = false;
     |);
     crossing-over = false;
-    arrow = arrow-combine normal-arrow-tail normal-arrow-body normal-arrow-head;
+    arrow = ArrowTailBodyHead(normal-arrow-tail,normal-arrow-body,normal-arrow-head);
     label-position = normal-label-position;
   |)
 
@@ -568,9 +614,20 @@ let arrow-list-to-graphic-list arrow-data =
     let startpt = (startx +' start-shiftx,starty +' start-shifty) in
     let endpt = (endx +' end-shiftx,endy +' end-shifty) in
     let arrow-graphics =
-      let body = arrow-data#arrow arrow-data#arrow-options startpt endpt ctx in
+      let gr = 
+        match arrow-data#arrow with
+        | ArrowShape(body) -> 
+          body arrow-data#arrow-options startpt endpt ctx
+        | ArrowTailBodyHead(t,b,h) -> (
+          let (tailpt,tailgr) = t arrow-data#arrow-options startpt endpt ctx in
+          let (headpt,headgr) = h arrow-data#arrow-options startpt endpt ctx in
+          let bodygr = b arrow-data#arrow-options tailpt headpt ctx in
+          let a = List.append tailgr headgr in
+          List.append a bodygr
+        )
+      in
       [(
-        body,
+        gr,
         if arrow-data#crossing-over then 3 else 0
       )]
     in
