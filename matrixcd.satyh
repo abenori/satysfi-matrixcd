@@ -396,11 +396,11 @@ let draw-label ctx (posx,posy) (dirx,diry) label arrow-options =
   let diffx = (if label#swap then (0.0 -. 1.0) else 1.0) *. Length.to-float dirx in
   let diffy = (if label#swap then (0.0 -. 1.0) else 1.0) *. Length.to-float diry in
   let distance = sqrt ((diffx *. diffx) +. (diffy *. diffy)) in
-  let (x,y) = 
+  let (x,y) = % 左下の座標
     if label#description || arrow-options#phantom then
       (posx -' (width *' 0.5), posy -' ((height -' depth) *' 0.5))
     else
-      let shiftx =
+      let shiftx = 
         (3pt *' diffy *. (0.0 -. 1.0) *. (1.0 /. distance)) -' (
           if ((not label#swap) && (diry <' 0pt) || ((label#swap) && (diry >' 0pt))) then 0pt
           else width
@@ -441,10 +441,11 @@ let draw-label ctx (posx,posy) (dirx,diry) label arrow-options =
     else []
     ,1)]
   in
+  let (w,h,d) = get-natural-metrics lit in
   let name-lst = 
     match label#name with
     | None -> []
-    | Some(s) -> [(s,(x,y),(get-natural-metrics lit))]
+    | Some(s) -> [(s,(x +' width *' 0.5,y +' ((height -' depth) *' 0.5)),(get-natural-metrics lit))]
   in
   (List.append description-graphic draw-graphic,name-lst)
 
