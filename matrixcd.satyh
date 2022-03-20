@@ -25,7 +25,7 @@ module MatrixCD : sig
   val bend-right : arrow-option
   val bend-left : arrow-option
   val phantom : arrow-option
-  val equal : arrow-option
+  val dash : arrow-option
   val arrow-color : color -> arrow-option
   val crossing-over : arrow-option
   val dotted : arrow-option
@@ -91,9 +91,10 @@ type arrow-data = (|
   label : label-data list;
   arrow-options : arrow-option-data;
   crossing-over : bool;
-  arrow-tail : arrow-option-data -> length * length -> length * length -> context -> (length * length) * graphics list;
-  arrow-head  : arrow-option-data -> length * length -> length * length -> context -> (length * length) * graphics list;
-  arrow-body  : arrow-option-data -> length * length -> length * length -> context -> graphics list;
+  arrow : arrow-option-data -> length * length -> length * length -> context -> graphics list;
+%  arrow-tail : arrow-option-data -> length * length -> length * length -> context -> (length * length) * graphics list;
+%  arrow-head  : arrow-option-data -> length * length -> length * length -> context -> (length * length) * graphics list;
+%  arrow-body  : arrow-option-data -> length * length -> length * length -> context -> graphics list;
   label-position : arrow-option-data -> length * length -> length * length -> float -> (length * length) * (length * length);
 |)
 
@@ -153,6 +154,14 @@ let normal-label-position opt (startx,starty) (endx,endy) pos =
   ((rx,ry),(p5x -' p4x,p5y -' p4y))
 
 % tailとheadはどこまで描いたかを返す．bodyにはこれらの点が始点・終点として渡される．
+let arrow-combine tail body head =
+  fun opts startpt endpt ctx -> (
+    let (tailpt,tailgr) = tail opts startpt endpt ctx in
+    let (headpt,headgr) = head opts startpt endpt ctx in
+    List.append tailgr (List.append (body opts tailpt headpt ctx) headgr)
+    
+  )
+
 let normal-arrow-tail opt startpt endpt ctx = (startpt,[])
 let none-arrow-tail = normal-arrow-tail
 let mapsto-arrow-tail opt (startx,starty) (endx,endy) ctx =
@@ -289,9 +298,7 @@ let shift-in p t = (|t with arrow-options = (|t#arrow-options with shift-in = p;
 let shift-out p t = (|t with arrow-options = (|t#arrow-options with shift-out = p;|);|)
 
 let phantom t = (|t with 
-  arrow-tail = none-arrow-tail;
-  arrow-head = none-arrow-head;
-  arrow-body = none-arrow-body;
+  arrow = arrow-combine none-arrow-tail none-arrow-body none-arrow-head;
   arrow-options = (|t#arrow-options with phantom = true;|)
 |)
 
@@ -300,21 +307,23 @@ let arrow-color c t = (|t with arrow-options = (|t#arrow-options with color = c;
 let label-color c t = (|t with color = c;|)
 let label-name s t = (|t with name = Some(s);|)
 
-let equal t = (|t with arrow-head = none-arrow-head;|)
-let twoheadrightarrow t = (|t with arrow-head = twoheadrightarrow-arrow-head;|)
+let dash t = (|t with arrow = arrow-combine normal-arrow-tail normal-arrow-body none-arrow-head;|)
+let twoheadrightarrow t = (|t with arrow = 
+  arrow-combine normal-arrow-tail normal-arrow-body twoheadrightarrow-arrow-head;
+|)
 let dotted t = 
   (|t with 
-    arrow-body = (fun opt -> dashed-arrow-body (opt#thickness,2pt,0pt) opt);
+    arrow = arrow-combine normal-arrow-tail (fun opt -> dashed-arrow-body (opt#thickness,2pt,0pt) opt) normal-arrow-head;
     label-position = normal-label-position;
   |)
 let dashed t = 
   (|t with
-    arrow-body = (fun opt -> dashed-arrow-body (1pt,3pt,0pt) opt);
+    arrow = arrow-combine normal-arrow-tail (fun opt -> dashed-arrow-body (1pt,3pt,0pt) opt) normal-arrow-head;
     label-position = normal-label-position;
   |)
-let mapsto t = (|t with arrow-tail = mapsto-arrow-tail;|)
-let hook t = (|t with arrow-tail = (hook-arrow-tail false);|)
-let hook-swap t = (|t with arrow-tail = (hook-arrow-tail true);|)
+let mapsto t = (|t with arrow = arrow-combine mapsto-arrow-tail normal-arrow-body normal-arrow-head;|)
+let hook t = (|t with arrow = arrow-combine (hook-arrow-tail false) normal-arrow-body normal-arrow-head;|)
+let hook-swap t = (|t with arrow = arrow-combine (hook-arrow-tail true) normal-arrow-body normal-arrow-head;|)
 
 let row-sep l t = (|t with row-sep = l;|)
 let column-sep l t = (|t with column-sep = l;|)
@@ -342,9 +351,7 @@ let arrow = arrow-scheme (|
       phantom = false;
     |);
     crossing-over = false;
-    arrow-tail = normal-arrow-tail;
-    arrow-head = normal-arrow-head;
-    arrow-body = normal-arrow-body;
+    arrow = arrow-combine normal-arrow-tail normal-arrow-body normal-arrow-head;
     label-position = normal-label-position;
   |)
 
@@ -561,11 +568,9 @@ let arrow-list-to-graphic-list arrow-data =
     let startpt = (startx +' start-shiftx,starty +' start-shifty) in
     let endpt = (endx +' end-shiftx,endy +' end-shifty) in
     let arrow-graphics =
-      let (tailpt,tail) = arrow-data#arrow-tail arrow-data#arrow-options startpt endpt ctx in
-      let (headpt,head) = arrow-data#arrow-head arrow-data#arrow-options startpt endpt ctx in
-      let body = arrow-data#arrow-body arrow-data#arrow-options tailpt headpt ctx in
+      let body = arrow-data#arrow arrow-data#arrow-options startpt endpt ctx in
       [(
-        List.append (List.append tail body) head,
+        body,
         if arrow-data#crossing-over then 3 else 0
       )]
     in
@@ -606,9 +611,6 @@ let arrow-list-to-graphic-funcs-pos arrow-list =
 % 射の情報から，((fun ctx from to -> (graphics list,priority,name-popsition-list)),from,to)のリストを作る
 % name-position-listは(name: string,position: length*length,size: length*length*length)のリスト
 % 名前がついた場所（ラベル）の中心点と(width,height,depth)を示す．
-
-
-
 let get-position-function coordxlist coordylist hor-padding-list ver-padding-list metric-list name-list pos =
   match pos with
   | Position-Name(name) -> (
