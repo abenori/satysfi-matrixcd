@@ -127,25 +127,36 @@ let sgn-length a = if a <' 0pt then (0.0-.1.0) else 1.0
 let abs-float a = if (1.0pt *' a) <' 0.0pt then 0.0 -. a else a
 
 % drawing arrows
+let get-direction-vector angle (startx,starty) (endx,endy) =
+  match angle with
+  | AbsoluteAngle(a) -> (0.0 -. cos (to-radian a),0.0 -. sin (to-radian a))
+  | RelativeAngle(aa) ->
+    let a = to-radian aa in
+    let x-f = Length.to-float (endx -' startx) in
+    let y-f = Length.to-float (endy -' starty) in
+    let d = sqrt (x-f *. x-f +. y-f *. y-f) in
+    ((x-f /. d) *. (cos a) -. (y-f /. d) *. (sin a),(x-f /. d) *. (sin a) +. (y-f /. d) *. (cos a))
+
 let get-bezier-control-points opt (startx,starty) (endx,endy) =
-  let get-direction angle = match angle with
-    | AbsoluteAngle(a) -> (cos (to-radian a),sin (to-radian a))
-    | RelativeAngle(aa) ->
-      let x-f = Length.to-float (startx -' endx) in
-      let y-f = Length.to-float (starty -' endy) in
-      let d = sqrt (x-f *. x-f +. y-f *. y-f) in
-      let a = to-radian aa in
-      ((x-f /. d) *. (cos a) -. (y-f /. d) *. (sin a),(x-f /. d) *. (sin a) +. (y-f /. d) *. (cos a))
-  in
-  let (out-x,out-y) = get-direction opt#angle-out in
-  let (in-x,in-y) = get-direction opt#angle-in in
+  let (out-x,out-y) = get-direction-vector opt#angle-out (startx,starty) (endx,endy)  in
+  let (in-x,in-y) = get-direction-vector opt#angle-in (startx,starty) (endx,endy)  in
   let x-f = Length.to-float (startx -' endx) in
   let y-f = Length.to-float (starty -' endy) in
   let d = sqrt (x-f *. x-f +. y-f *. y-f) in
   (
-    (startx +' 1pt *' (d *. 0.3) *. out-x,starty +' 1pt *' (d *. 0.3) *. out-y),
-    (endx +' 1pt *' (d *. 0.3) *. in-x,endy +' 1pt *' (d *. 0.3) *. in-y)
+    (startx -' 1pt *' (d *. 0.3) *. out-x,starty -' 1pt *' (d *. 0.3) *. out-y),
+    (endx -' 1pt *' (d *. 0.3) *. in-x,endy -' 1pt *' (d *. 0.3) *. in-y)
   )
+
+% from standard Gr library
+let arrow-tip-from-standard-graphic color lenL lenM lenP (x,y) (dirx,diry) =
+  let (cx, cy) = (x -' lenL *' dirx, y -' lenL *' diry) in
+  let (mx, my) = (x -' lenM *' dirx, y -' lenM *' diry) in
+  let (p1, q1) = (cx +' lenP *' diry, cy -' lenP *' dirx) in
+  let (p2, q2) = (cx -' lenP *' diry, cy +' lenP *' dirx) in
+  [
+    fill color (Gr.polygon (x,y) [(p1, q1); (mx, my); (p2, q2)]);
+  ]
 
 % ((x,y),(dirx,diry)): 位置と直線（接線）の方向ベクトル
 let normal-label-position opt (startx,starty) (endx,endy) pos =
@@ -158,45 +169,22 @@ let normal-label-position opt (startx,starty) (endx,endy) pos =
   let (rx,ry) = (p5x *' pos +' p4x *' (1.0 -. pos),p5y *' pos +' p4y *' (1.0 -. pos)) in
   ((rx,ry),(p5x -' p4x,p5y -' p4y))
 
-% tailとheadはどこまで描いたかを返す．bodyにはこれらの点が始点・終点として渡される．
-let arrow-combine tail body head =
-  fun opts startpt endpt ctx -> (
-    let (tailpt,tailgr) = tail opts startpt endpt ctx in
-    let (headpt,headgr) = head opts startpt endpt ctx in
-    List.append tailgr (List.append (body opts tailpt headpt ctx) headgr)
-    
-  )
-
 let normal-arrow-tail opt startpt endpt ctx = (startpt,[])
 let none-arrow-tail = normal-arrow-tail
 let mapsto-arrow-tail opt (startx,starty) (endx,endy) ctx =
   let size = 2.5pt in
-  let (x-f,y-f) = 
-    match opt#angle-out with
-    | AbsoluteAngle(a) -> (0.0 -. (sin (to-radian a)),cos (to-radian a))
-    | RelativeAngle(a) -> 
-      let (x,y) = rotate (endx -' startx,endy -' starty) (to-radian (90.0 +. a)) in
-      (Length.to-float x, Length.to-float y)
-  in
-  let d = sqrt (x-f *. x-f +. y-f *. y-f) in
+  let (dirx,diry) = get-direction-vector opt#angle-out (startx,starty) (endx,endy) in
   ((startx,starty),[
     stroke opt#thickness opt#color
-      (start-path (startx +' size *' (x-f /. d), starty +' size *' (y-f /. d))
-        |> line-to (startx -' size *' (x-f /. d), starty -' size *' (y-f /. d))
+      (start-path (startx -' size *' diry, starty +' size *' dirx)
+        |> line-to (startx +' size *' diry, starty -' size *' dirx)
         |> terminate-path
       )
   ])
 let hook-arrow-tail swap opt (startx,starty) (endx,endy) ctx =
   let radius = 1.5pt in
-  let (x,y) =
-    match opt#angle-out with
-    | AbsoluteAngle(a) -> (radius *' cos (to-radian a),radius *' sin (to-radian a))
-    | RelativeAngle(a) -> 
-      let (c,d) = rotate (startx -' endx,starty -' endy) (to-radian a) in
-      let (x-f,y-f) = (Length.to-float c, Length.to-float d) in
-      let d = sqrt (x-f *. x-f +. y-f *. y-f) in
-      (radius *' (x-f /. d), radius *' (y-f /. d))
-  in
+  let (dirx,diry) = get-direction-vector opt#angle-out (startx,starty) (endx,endy) in
+  let (x,y) = (0pt -' radius *' dirx,0pt -' radius *' diry) in
   let (cx,cy) = if swap then (startx +' x  +' y, starty +' y -' x) else (startx +' x  -' y, starty +' y +' x) in
   let (tx,ty) = (x *' 0.55228, y *' 0.55228) in
   let path = start-path (cx +' y,cy -' x)
@@ -207,26 +195,21 @@ let hook-arrow-tail swap opt (startx,starty) (endx,endy) ctx =
   ((startx +' x,starty +' y),[stroke opt#thickness opt#color path])
 
 let-rec multiple-arrow-head count opt (startx,starty) (endx,endy) ctx = 
-  let (x,y) = 
-    match opt#angle-in with
-    | AbsoluteAngle(a) -> (cos (to-radian a),sin (to-radian a))
-    | RelativeAngle(aa) ->
-      let a = to-radian aa in
-      let x-f = Length.to-float (startx -' endx) in
-      let y-f = Length.to-float (starty -' endy) in
-      let d = sqrt (x-f *. x-f +. y-f *. y-f) in
-      ((x-f /. d) *. (cos a) -. (y-f /. d) *. (sin a),(x-f /. d) *. (sin a) +. (y-f /. d) *. (cos a))
-  in
+  let (x,y) = get-direction-vector opt#angle-in (startx,starty) (endx,endy) in
   let pos = opt#thickness in
   let arstpt =
-    if count == 1 then  (endx +' pos *' x,endy +' pos *' y) 
-    else (endx +' 2pt *' x,endy +' 2pt *' y)
+    if count == 1 then  (endx -' pos *' x,endy -' pos *' y) 
+    else (endx -' 2pt *' x,endy -' 2pt *' y)
   in
   let (endpt,g) =
     if count == 1 then (arstpt,[])
     else multiple-arrow-head (count - 1) opt (startx,starty) arstpt ctx
   in
-  (arstpt,(List.append g (Gr.arrow opt#thickness opt#color 4pt 1pt 4pt arstpt (endx,endy))))
+  (arstpt,(List.append g (
+    List.append 
+      (arrow-tip-from-standard-graphic opt#color 4pt 1pt 4pt (endx,endy) (x,y))
+      [stroke opt#thickness opt#color (start-path arstpt |> line-to (endx,endy) |> terminate-path)])))
+
 let normal-arrow-head = multiple-arrow-head 1
 let none-arrow-head opt startpt endpt ctx = (endpt,[])
 let twoheadrightarrow-arrow-head = multiple-arrow-head 2
@@ -240,31 +223,9 @@ let arrow-body-path opt (startx,starty) (endx,endy) ctx =
 let normal-arrow-body opt startpt endpt ctx = [stroke opt#thickness opt#color (arrow-body-path opt startpt endpt ctx)]
 let dashed-arrow-body pattern opt startpt endpt ctx = [dashed-stroke opt#thickness pattern opt#color (arrow-body-path opt startpt endpt ctx)]
 let none-arrow-body opt startpt endpt ctx = []
-% from standard Gr library
-let arrow-tip-from-standard-graphic color lenL lenM lenP (x,y) (dirx,diry) =
-  let (cx, cy) = (x -' lenL *' dirx, y -' lenL *' diry) in
-  let (mx, my) = (x -' lenM *' dirx, y -' lenM *' diry) in
-  let (p1, q1) = (cx +' lenP *' diry, cy -' lenP *' dirx) in
-  let (p2, q2) = (cx -' lenP *' diry, cy +' lenP *' dirx) in
-  [
-    fill color (Gr.polygon (x,y) [(p1, q1); (mx, my); (p2, q2)]);
-  ]
-% Gr.arrow (線の太さ) (色)  (先っぽの長さ？) (先から手元までの長さ？) (開き？)
-%  Gr.arrow 1pt Color.black 4pt 1pt 4pt startpt startpt
 
 let arrow-imply opt (startx,starty) (endx,endy) ctx =
-  % Gr.arrowを参考
-  % 矢印の向き（start -> endの長さ1のベクトル）
-  let (dirx,diry) = 
-    match opt#angle-in with
-    | AbsoluteAngle(a) -> (0.0 -. cos (to-radian a),0.0 -. sin (to-radian a))
-    | RelativeAngle(aa) ->
-      let a = to-radian aa in
-      let x-f = Length.to-float (endx -' startx) in
-      let y-f = Length.to-float (endy -' starty) in
-      let d = sqrt (x-f *. x-f +. y-f *. y-f) in
-      ((x-f /. d) *. (cos a) -. (y-f /. d) *. (sin a),(x-f /. d) *. (sin a) +. (y-f /. d) *. (cos a))
-  in
+  let (dirx,diry) = get-direction-vector opt#angle-in (startx,starty) (endx,endy) in
   let gr-tip = arrow-tip-from-standard-graphic opt#color 4pt 1pt 4pt (endx,endy) (dirx,diry) in
   let len = 1pt in
   List.append [
