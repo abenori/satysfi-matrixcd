@@ -129,7 +129,7 @@ let abs-float a = if (1.0pt *' a) <' 0.0pt then 0.0 -. a else a
 % drawing arrows
 let get-direction-vector angle (startx,starty) (endx,endy) =
   match angle with
-  | AbsoluteAngle(a) -> (0.0 -. cos (to-radian a),0.0 -. sin (to-radian a))
+  | AbsoluteAngle(a) -> (cos (to-radian a),sin (to-radian a))
   | RelativeAngle(aa) ->
     let a = to-radian aa in
     let x-f = Length.to-float (endx -' startx) in
@@ -140,12 +140,12 @@ let get-direction-vector angle (startx,starty) (endx,endy) =
 let get-bezier-control-points opt (startx,starty) (endx,endy) =
   let (out-x,out-y) = get-direction-vector opt#angle-out (startx,starty) (endx,endy)  in
   let (in-x,in-y) = get-direction-vector opt#angle-in (startx,starty) (endx,endy)  in
-  let x-f = Length.to-float (startx -' endx) in
-  let y-f = Length.to-float (starty -' endy) in
+  let x-f = Length.to-float (endx -' startx) in
+  let y-f = Length.to-float (endy -' starty) in
   let d = sqrt (x-f *. x-f +. y-f *. y-f) in
   (
-    (startx -' 1pt *' (d *. 0.3) *. out-x,starty -' 1pt *' (d *. 0.3) *. out-y),
-    (endx -' 1pt *' (d *. 0.3) *. in-x,endy -' 1pt *' (d *. 0.3) *. in-y)
+    (startx +' 1pt *' (d *. 0.3) *. out-x,starty +' 1pt *' (d *. 0.3) *. out-y),
+    (endx +' 1pt *' (d *. 0.3) *. in-x,endy +' 1pt *' (d *. 0.3) *. in-y)
   )
 
 % from standard Gr library
@@ -195,7 +195,10 @@ let hook-arrow-tail swap opt (startx,starty) (endx,endy) ctx =
   ((startx +' x,starty +' y),[stroke opt#thickness opt#color path])
 
 let-rec multiple-arrow-head count opt (startx,starty) (endx,endy) ctx = 
-  let (x,y) = get-direction-vector opt#angle-in (startx,starty) (endx,endy) in
+  let (x,y) = 
+    let (xx,yy) = get-direction-vector opt#angle-in (startx,starty) (endx,endy) in
+    (0.0 -. xx,0.0 -. yy) % angleは入ってくる方向なので矢印の向きは逆
+  in
   let pos = opt#thickness in
   let arstpt =
     if count == 1 then  (endx -' pos *' x,endy -' pos *' y) 
@@ -286,8 +289,8 @@ let from-by-name s t = (|t with direction-from = Position-Name(s)|)
 let arrow-out a t = (|t with arrow-options = (|t#arrow-options with angle-out = AbsoluteAngle(a);|)|)
 let arrow-in a t = (|t with arrow-options = (|t#arrow-options with angle-in = AbsoluteAngle(a);|)|)
 let bend f t = (|t with arrow-options = (|t#arrow-options with 
-  angle-in = RelativeAngle(f);
-  angle-out = RelativeAngle(180.0 -. f);
+  angle-in = RelativeAngle(180.0 -. f);
+  angle-out = RelativeAngle(f);
 |);|)
 let bend-right t = bend 30.0 t
 let bend-left t = bend (0.0 -. 30.0) t
@@ -350,8 +353,8 @@ let arrow = arrow-scheme (|
     arrow-options = (|
       color = Color.black;
       thickness = 0.5pt;
-      angle-in = RelativeAngle(0.0);
-      angle-out = RelativeAngle(180.0);
+      angle-in = RelativeAngle(180.0);
+      angle-out = RelativeAngle(0.0);
       shift = (0pt,0pt);
       shift-in = (0pt,0pt);
       shift-out = (0pt,0pt);
@@ -445,7 +448,23 @@ let draw-label ctx (posx,posy) (dirx,diry) label arrow-options =
   let name-lst = 
     match label#name with
     | None -> []
-    | Some(s) -> [(s,(x +' width *' 0.5,y +' ((height -' depth) *' 0.5)),(get-natural-metrics lit))]
+    | Some(s) -> (
+      let centerx = x +' width *' 0.5 in
+      let centery = y +' ((height -' depth) *' 0.5) in
+      let h = height +' depth in
+      let w = width in
+      let rotate-plus-center (px,py) = 
+        if label#sloped then 
+          (px *' (diffx /. distance) -' py *' (diffy /. distance)  +' centerx,px *' (diffy /. distance) +' py *' (diffx /. distance) +' centery)
+        else (px +' centerx,py +' centery)
+      in
+      [(s,(centerx,centery),[
+        (rotate-plus-center ((0pt -' w) *' 0.5,(0pt -' h) *' 0.5));
+        (rotate-plus-center ((0pt -' w) *' 0.5,        h  *' 0.5));
+        (rotate-plus-center (        w  *' 0.5,        h  *' 0.5));
+        (rotate-plus-center (        w  *' 0.5,(0pt -' h) *' 0.5));
+      ])]
+    )
   in
   (List.append description-graphic draw-graphic,name-lst)
 
@@ -465,57 +484,58 @@ let draw-crossing-over ctx (startx,starty) (endx,endy) =
       |> close-with-line
   )]
 
-type boundary-pos = Left | Right | Top | Bottom
-let get-boundary-point x y leftx rightx bottomy topy (dirx,diry) =
-  let dirx-f = Length.to-float dirx in
-  let diry-f = Length.to-float diry in
-  let d = sqrt (dirx-f *. dirx-f +. diry-f *. diry-f) in
-  if Length.(dirx == 0pt) then 
-    if diry >' 0pt then (x,topy)
-    else (x,bottomy)
-  else if Length.(diry == 0pt) then
-    if dirx >' 0pt then (rightx,y)
-    else (leftx,y)
-  else
-    % dirx != 0pt, diry != 0pt
-    let dir-slope = diry /' dirx in
-    let pos = 
-      if dirx >' 0pt && diry >' 0pt then
-        let slope = (topy -' y) /' (rightx -' x) in
-        if Float.(dir-slope > slope) then Top
-        else Right
-      else if dirx >' 0pt && diry <' 0pt then
-        let slope = (bottomy -' y) /' (rightx -' x) in
-        if Float.(dir-slope > slope) then Right
-        else Bottom
-      else if dirx <' 0pt && diry >' 0pt then
-        let slope = (topy -' y) /' (leftx -' x) in
-        if Float.(dir-slope > slope) then Left
-        else Top
-      else
-        let slope = (bottomy -' y) /' (leftx -' x) in
-        if Float.(dir-slope > slope) then Bottom
-        else Left
-    in
-    match pos with
-    | Left -> (leftx, y +' (leftx -' x) *' dir-slope)
-    | Right -> (rightx, y +' (rightx -' x) *' dir-slope)
-    | Top -> ((topy -' y) *' (1.0 /. dir-slope) +' x,topy)
-    | Bottom -> ((bottomy -' y) *' (1.0 /. dir-slope) +' x,bottomy)
+% (centerx,centery)（内部）から(dirx,diry)方向に進む直線の境界との交点を計算する．
+% plistの点を結び直線で囲まれた領域を考える．
+let display-point s (x,y) = 
+  display-message (s ^ `(` ^ (Float.to-string (Length.to-float x)) ^ `,` ^ (Float.to-string (Length.to-float y)) ^ `)`)
+let get-boundary-point (centerx,centery) ptlst (dirx,diry) =
+  let () = display-point `(dirx,diy) = ` (dirx,diry) in
+  let () = display-point `(centerx,centery) = ` (centerx,centery) in
+  let-rec aux (prevx,prevy) lst =
+    match lst with
+    | [] -> None
+    | (px,py) :: xs -> (
+      % ax + by = cが(prevx,prevy)と(x,y)を通る直線．(a,b)は正規化しておく．
+      let aa = (prevy -' py) /' 1pt in
+      let bb = (px -' prevx) /' 1pt in
+      let dd = sqrt (aa *. aa +. bb *. bb) in
+      let a = aa /. dd in
+      let b = bb /. dd in
+      let distdir = sqrt ((dirx /' 1pt) *. (dirx /' 1pt) +. (diry /' 1pt) *. (diry /' 1pt)) in
+      let dx = dirx *' (1.0 /. distdir) in
+      let dy = diry *' (1.0 /. distdir) in
+      let c = px *' a +' py *' b in
+      let d = dx *' a +' dy *' b in
+      let () = display-message (`d = ` ^ (Float.to-string (Length.to-float d))) in
+      if (d <' 0.01pt && d >' -0.01pt) then aux (px,py) xs
+      else (
+        let () = display-point `prevpoint: ` (prevx,prevy) in
+        let () = display-point `curpoint: ` (px,py) in
+        let t = ((c -' (centerx *' a +' centery  *' b)) /' d) in
+        let () = display-message (`t = ` ^ (Float.to-string t)) in
+        if Float.(t >= 0.0) then Some(centerx +' dx *' t,centery +' dy *' t)
+        else aux (px,py) xs
+      )
+    )
+  in
+  match List.last ptlst with
+  | None -> (centerx,centery)
+  | Some(l) -> (
+    match aux l ptlst with
+    |None -> (
+      let () = display-message `failed to get boundary point, maybe a bug` in
+      (centerx,centery)
+    )
+    |Some(p) -> (
+      let () = display-point `boundary point = ` p in
+      p
+    )
+  )
 
 let get-source-target
-  ((from-x,from-y),(from-width,from-height,from-depth)) from-angle
-  ((to-x,  to-y)  ,(to-width,  to-height,  to-depth  )) to-angle =
-  let object-margin = 5pt in
-  let from-left = from-x -' (from-width *' 0.5) in
-  let from-right = from-x +' (from-width *' 0.5) in
-  let to-left = to-x -' (to-width *' 0.5) in
-  let to-right = to-x +' (to-width *' 0.5) in
-  let from-top = from-y +' from-height in
-  let from-bottom = from-y -' from-depth in
-  let to-top = to-y +' to-height in
-  let to-bottom = to-y -' to-depth in
-  let direction-vector = (from-x -' to-x, (from-top +' from-bottom) *' 0.5 -' (to-top +' to-bottom) *' 0.5) in
+  ((from-x,from-y),from-pts) from-angle
+  ((to-x,  to-y)  ,to-pts)   to-angle =
+  let direction-vector = (to-x -' from-x, to-y -' from-y) in
   let direction-out = 
     match from-angle with
     | RelativeAngle(a) -> rotate direction-vector (to-radian a)
@@ -526,22 +546,9 @@ let get-source-target
     | RelativeAngle(a) -> rotate direction-vector (to-radian a)
     | AbsoluteAngle(a) -> (1pt *' cos (to-radian a),1pt *' sin (to-radian a))
   in
-  let (arrow-start-x,arrow-start-y) = 
-    get-boundary-point
-      from-x ((from-top +' from-bottom) *' 0.5)
-      (from-left -' object-margin) (from-right +' object-margin)
-      (from-bottom -' object-margin) (from-top +' object-margin)
-      direction-out
-  in
-  let (arrow-end-x,arrow-end-y) = 
-    get-boundary-point
-      to-x ((to-top +' to-bottom) *' 0.5)
-      (to-left -' object-margin) (to-right +' object-margin)
-      (to-bottom -' object-margin) (to-top +' object-margin)
-      direction-in
-  in
+  let (arrow-start-x,arrow-start-y) = get-boundary-point (from-x,from-y) from-pts direction-out in
+  let (arrow-end-x,arrow-end-y) = get-boundary-point (to-x,to-y) to-pts direction-in in
   ((arrow-start-x,arrow-start-y),(arrow-end-x,arrow-end-y))
-
 
 % 横方向みたいな変数名……
 let get-center coordlist padding index = 
@@ -563,7 +570,7 @@ type gr-data =
     % context, source, targeを取得し，((graphics list,priority)のリスト,名前のリスト)を返す．
     % 名前のリストは(名前,位置,対象の(横幅,高さ,深さ))
     (context -> (length*length) -> (length*length) -> (
-      ((graphics list) * int) list * (string*(length*length)*(length*length*length))list
+      ((graphics list) * int) list * (string*(length*length)*((length*length)list))list
     ))
     * (position * arrow-angle) * (position * arrow-angle)
   | AfterDraw of (graphics list * int)
@@ -628,7 +635,7 @@ let arrow-list-to-graphic-funcs-pos arrow-list =
 
 % 処理手順
 % 射の情報から，((fun ctx from to -> (graphics list,priority,name-popsition-list)),from,to)のリストを作る
-% name-position-listは(name: string,position: length*length,size: length*length*length)のリスト
+% name-position-listは(tring(名前),length*length(中心点),length*length list(周りの点))のリスト
 % 名前がついた場所（ラベル）の中心点と(width,height,depth)を示す．
 let get-position-function coordxlist coordylist hor-padding-list ver-padding-list metric-list name-list pos =
   match pos with
@@ -638,6 +645,7 @@ let get-position-function coordxlist coordylist hor-padding-list ver-padding-lis
     | Some(s,a,b) -> Some(a,b)
   )
   | Position-Coordinate(x,y) -> (
+    let object-margin = 5pt in
     let get-padding-from-list p-list x y =
       Option.from (0pt,0pt) (List.nth x (
         Option.from [] (List.nth y p-list)
@@ -663,7 +671,13 @@ let get-position-function coordxlist coordylist hor-padding-list ver-padding-lis
       )
     in
     let baseline = (aux 0 0pt) +' (Option.from 0pt (List.nth (y + 1) coordylist)) in
-    Some((centerx,baseline),(width,ht,dp))
+    let centery = baseline +' (ht -' dp) *' 0.5 in
+    Some((centerx,centery),[
+      (centerx -' width *' 0.5 -' object-margin,centery -' height *' 0.5 -' object-margin);
+      (centerx +' width *' 0.5 +' object-margin,centery -' height *' 0.5 -' object-margin);
+      (centerx +' width *' 0.5 +' object-margin,centery +' height *' 0.5 +' object-margin);
+      (centerx -' width *' 0.5 -' object-margin,centery +' height *' 0.5 +' object-margin);
+    ])
   )
 
 let-rec draw-arrows-aux ctx position target-list name-list =
