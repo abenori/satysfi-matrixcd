@@ -225,13 +225,12 @@ let arrow-body-path (startx,starty) angle-out (endx,endy) angle-in pth =
   let ((ctr1x,ctr1y),(ctr2x,ctr2y)) = get-bezier-control-points (startx,starty) angle-out (endx,endy) angle-in in
   pth |> bezier-to (ctr1x,ctr1y) (ctr2x,ctr2y) (endx,endy)
 
-let arrow-body-crossing-over-graphics opt (startx,starty) (endx,endy) =
+let arrow-body-crossing-over-graphics haba opt (startx,starty) (endx,endy) =
   let (dirx-out,diry-out) = get-direction-vector opt#angle-out (startx,starty) (endx,endy) in
   let (dirx-in,diry-in) = 
     let (x,y) = get-direction-vector opt#angle-in (startx,starty) (endx,endy) in
     (0.0 -. x,0.0 -. y)
   in
-  let haba = opt#thickness +' 2pt in
   let pt-out-a = (startx -' haba *' diry-out,starty +' haba *' dirx-out) in
   let pt-out-b = (startx +' haba *' diry-out,starty -' haba *' dirx-out) in
   let pt-in-a = (endx -' haba *' diry-in,endy +' haba *' dirx-in) in
@@ -250,7 +249,7 @@ let arrow-body-crossing-over-graphics opt (startx,starty) (endx,endy) =
 let arrow-body-graphic strokef opt startpt endpt =
   List.append 
     [strokef (start-path startpt |> arrow-body-path startpt opt#angle-out endpt opt#angle-in |> terminate-path);]
-    (if opt#crossing-over then arrow-body-crossing-over-graphics opt startpt endpt
+    (if opt#crossing-over then arrow-body-crossing-over-graphics (opt#thickness +' 2pt) opt startpt endpt
     else []
     )
 
@@ -268,7 +267,6 @@ let arrow-imply opt (startx,starty) (endx,endy) ctx =
   let gr-tip = arrow-tip-from-standard-graphic opt#color 4pt 1pt 4pt (endx,endy) (dirx-in,diry-in) in
   let len = 1pt in
   let start-pt-a = (startx -' len *' diry-out,starty +' len *' dirx-out) in
-  %let start-pt-b = (startx,starty) in
   let start-pt-b = (startx +' len *' diry-out,starty -' len *' dirx-out) in
   let end-pt-a = (endx -' len *' (1.5 *. dirx-in +. diry-in),endy -' len *' (1.5 *. diry-in -. dirx-in)) in
   let end-pt-b = (endx -' len *' (1.5 *. dirx-in -. diry-in),endy -' len *' (1.5 *. diry-in +. dirx-in)) in
@@ -281,7 +279,7 @@ let arrow-imply opt (startx,starty) (endx,endy) ctx =
     ] gr-tip
   in
   List.append gr-arrow 
-    (if opt#crossing-over then arrow-body-crossing-over-graphics opt (startx,starty) (endx,endy) else [])
+    (if opt#crossing-over then arrow-body-crossing-over-graphics 4pt opt (startx,starty) (endx,endy) else [])
 
   
 let label ?:option it t = 
@@ -434,7 +432,7 @@ let add-to-column obj lst =
 
 let add-to-row obj lst = (List.append lst [[obj]])
 
-% (graphics list,priority: int), name-listのペアを返す
+% ((graphics list,priority: int), name-list)を返す
 let draw-label ctx (posx,posy) (dirx,diry) label arrow-options =
   let font-size = (get-font-size ctx) *' (if arrow-options#phantom then 1.0 else 0.7) in
   let lit = embed-math (ctx
@@ -488,15 +486,15 @@ let draw-label ctx (posx,posy) (dirx,diry) label arrow-options =
       )]
     else []
   in
-  let (w,h,d) = get-natural-metrics lit in
   let name-lst = 
     match label#name with
     | None -> []
     | Some(s) -> (
       let centerx = x +' width *' 0.5 in
       let centery = y +' ((height -' depth) *' 0.5) in
-      let h = height +' depth in
-      let w = width in
+      % 内部がない場合にはちょっとだけ膨らませる．
+      let h = if height +' depth <' 0.001pt then 0.5pt else height +' depth in
+      let w = if width <' 0.001pt then 0.5pt else width in
       let rotate-plus-center (px,py) = 
         if label#sloped then 
           (px *' (diffx /. distance) -' py *' (diffy /. distance)  +' centerx,px *' (diffy /. distance) +' py *' (diffx /. distance) +' centery)
@@ -510,7 +508,8 @@ let draw-label ctx (posx,posy) (dirx,diry) label arrow-options =
       ])]
     )
   in
-  ([(List.append description-graphic draw-graphic,2)],name-lst)
+  let gr = List.append description-graphic draw-graphic in
+  ([(gr,2)],name-lst)
 
 let draw-crossing-over ctx (startx,starty) (endx,endy) =
   let x-f = Length.to-float (endx -' startx) in
@@ -533,8 +532,8 @@ let draw-crossing-over ctx (startx,starty) (endx,endy) =
 let display-point s (x,y) = 
   display-message (s ^ `(` ^ (Float.to-string (Length.to-float x)) ^ `,` ^ (Float.to-string (Length.to-float y)) ^ `)`)
 let get-boundary-point (centerx,centery) ptlst (dirx,diry) =
-  let () = display-point `(dirx,diy) = ` (dirx,diry) in
-  let () = display-point `(centerx,centery) = ` (centerx,centery) in
+  %let () = display-point `(dirx,diy) = ` (dirx,diry) in
+  %let () = display-point `(centerx,centery) = ` (centerx,centery) in
   let distdir = sqrt ((dirx /' 1pt) *. (dirx /' 1pt) +. (diry /' 1pt) *. (diry /' 1pt)) in
   % (dirx,diry)を長さ1に正規化しておく．
   let dirx = dirx *' (1.0 /. distdir) in
@@ -548,11 +547,11 @@ let get-boundary-point (centerx,centery) ptlst (dirx,diry) =
     | [] -> None
     | (px,py) :: xs -> (
       % ax + by = cが(prevx,prevy)と(x,y)を通る直線．(a,b)は正規化しておく．
-      let () = display-point `prevpoint: ` (prevx,prevy) in
-      let () = display-point `curpoint: ` (px,py) in
+      %let () = display-point `prevpoint: ` (prevx,prevy) in
+      %let () = display-point `curpoint: ` (px,py) in
       let prevr = prevx *' p +' prevy *' q -' r in
       let curr = px *' p +' py *' q -' r in
-      let () = display-point `(prevr,curr) = ` (prevr,curr) in
+      %let () = display-point `(prevr,curr) = ` (prevr,curr) in
       if (
         (prevr <' 0pt && curr <' 0pt) ||
         (prevr >' 0pt && curr >' 0pt)
@@ -566,11 +565,11 @@ let get-boundary-point (centerx,centery) ptlst (dirx,diry) =
         let b = bb /. dd in
         let c = px *' a +' py *' b in
         let d = dirx *' a +' diry *' b in
-        let () = display-message (`d = ` ^ (Float.to-string (Length.to-float d))) in
+        %let () = display-message (`d = ` ^ (Float.to-string (Length.to-float d))) in
         if (d <' 0.01pt && d >' -0.01pt) then aux (px,py) xs
         else (
           let t = ((c -' (centerx *' a +' centery  *' b)) /' d) in
-          let () = display-message (`t = ` ^ (Float.to-string t)) in
+          %let () = display-message (`t = ` ^ (Float.to-string t)) in
           if Float.(t >= 0.0) then Some(centerx +' dirx *' t,centery +' diry *' t)
           else aux (px,py) xs
         )
@@ -586,7 +585,7 @@ let get-boundary-point (centerx,centery) ptlst (dirx,diry) =
       (centerx,centery)
     )
     |Some(p) -> (
-      let () = display-point `boundary point = ` p in
+      %let () = display-point `boundary point = ` p in
       p
     )
   )
@@ -628,9 +627,12 @@ type gr-data =
   | BeforeDraw of 
     % context, source, targeを取得し，((graphics list,priority)のリスト,名前のリスト)を返す．
     % 名前のリストは(名前,位置,対象の(横幅,高さ,深さ))
+    % priorityは描画の順番．数字が大きい方が後で描画．
+    % 今は普通の矢印=0，crossing-over=1，ラベル=2
     (context -> (length*length) -> (length*length) -> (
       ((graphics list) * int) list * (string*(length*length)*((length*length)list))list
     ))
+    % こちらは矢印の始点と終点．
     * (position * arrow-angle) * (position * arrow-angle)
   | AfterDraw of (graphics list * int)
 
@@ -656,7 +658,7 @@ let arrow-list-to-graphic-list arrow-data =
       in
       [(
         gr,
-        if arrow-data#arrow-options#crossing-over then 2 else 1
+        if arrow-data#arrow-options#crossing-over then 1 else 0
       )]
     in
     let (label-graphics,name-list) = List.fold-left 
