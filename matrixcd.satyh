@@ -84,6 +84,7 @@ type arrow-option-data = (|
   shift-in : length * length;
   shift-out : length * length;
   phantom : bool;
+  crossing-over : bool;
 |)
 
 type arrow-shape = 
@@ -98,7 +99,6 @@ type arrow-data = (|
   direction-from : position;
   label : label-data list;
   arrow-options : arrow-option-data;
-  crossing-over : bool;
   arrow : arrow-shape;
   label-position : arrow-option-data -> length * length -> length * length -> float -> (length * length) * (length * length);
 |)
@@ -137,19 +137,23 @@ let get-direction-vector angle (startx,starty) (endx,endy) =
     let d = sqrt (x-f *. x-f +. y-f *. y-f) in
     ((x-f /. d) *. (cos a) -. (y-f /. d) *. (sin a),(x-f /. d) *. (sin a) +. (y-f /. d) *. (cos a))
 
-let get-bezier-control-points opt (startx,starty) (endx,endy) =
-  let (out-x,out-y) = get-direction-vector opt#angle-out (startx,starty) (endx,endy)  in
-  let (in-x,in-y) = get-direction-vector opt#angle-in (startx,starty) (endx,endy)  in
+let get-bezier-control-points (startx,starty) angle-out (endx,endy) angle-in =
+  let (out-x,out-y) = get-direction-vector angle-out (startx,starty) (endx,endy)  in
+  let (in-x,in-y) = get-direction-vector angle-in (startx,starty) (endx,endy)  in
   let x-f = Length.to-float (endx -' startx) in
   let y-f = Length.to-float (endy -' starty) in
   let d = sqrt (x-f *. x-f +. y-f *. y-f) in
+  let ratio = 0.3 in 
   (
-    (startx +' 1pt *' (d *. 0.3) *. out-x,starty +' 1pt *' (d *. 0.3) *. out-y),
-    (endx +' 1pt *' (d *. 0.3) *. in-x,endy +' 1pt *' (d *. 0.3) *. in-y)
+    (startx +' 1pt *' (d *. ratio) *. out-x,starty +' 1pt *' (d *. ratio) *. out-y),
+    (endx +' 1pt *' (d *. ratio) *. in-x,endy +' 1pt *' (d *. ratio) *. in-y)
   )
 
 % from standard Gr library
 let arrow-tip-from-standard-graphic color lenL lenM lenP (x,y) (dirx,diry) =
+  let d = sqrt (dirx *. dirx +. diry *. diry) in
+  let dirx = dirx /. d in
+  let diry = diry /. d in
   let (cx, cy) = (x -' lenL *' dirx, y -' lenL *' diry) in
   let (mx, my) = (x -' lenM *' dirx, y -' lenM *' diry) in
   let (p1, q1) = (cx +' lenP *' diry, cy -' lenP *' dirx) in
@@ -160,7 +164,7 @@ let arrow-tip-from-standard-graphic color lenL lenM lenP (x,y) (dirx,diry) =
 
 % ((x,y),(dirx,diry)): 位置と直線（接線）の方向ベクトル
 let normal-label-position opt (startx,starty) (endx,endy) pos =
-  let ((ctr1x,ctr1y),(ctr2x,ctr2y)) = get-bezier-control-points opt (startx,starty) (endx,endy) in
+  let ((ctr1x,ctr1y),(ctr2x,ctr2y)) = get-bezier-control-points (startx,starty) opt#angle-out (endx,endy) opt#angle-in in
   let (p1x,p1y) = (ctr1x *' pos +' startx *' (1.0 -. pos),ctr1y *' pos +' starty *' (1.0 -. pos)) in
   let (p2x,p2y) = (ctr2x *' pos +' ctr1x *' (1.0 -. pos), ctr2y *' pos +' ctr1y *' (1.0 -. pos)) in
   let (p3x,p3y) = (endx *' pos +' ctr2x *' (1.0 -. pos), endy *' pos +' ctr2y *' (1.0 -. pos)) in
@@ -217,18 +221,49 @@ let normal-arrow-head = multiple-arrow-head 1
 let none-arrow-head opt startpt endpt ctx = (endpt,[])
 let twoheadrightarrow-arrow-head = multiple-arrow-head 2
 
-let arrow-body-path opt (startx,starty) (endx,endy) ctx =
-  let ((ctr1x,ctr1y),(ctr2x,ctr2y)) = get-bezier-control-points opt (startx,starty) (endx,endy) in
-  start-path (startx,starty)
-    |> bezier-to (ctr1x,ctr1y) (ctr2x,ctr2y) (endx,endy)
-    |> terminate-path
+let arrow-body-path (startx,starty) angle-out (endx,endy) angle-in pth =
+  let ((ctr1x,ctr1y),(ctr2x,ctr2y)) = get-bezier-control-points (startx,starty) angle-out (endx,endy) angle-in in
+  pth |> bezier-to (ctr1x,ctr1y) (ctr2x,ctr2y) (endx,endy)
 
-let normal-arrow-body opt startpt endpt ctx = [stroke opt#thickness opt#color (arrow-body-path opt startpt endpt ctx)]
-let dashed-arrow-body pattern opt startpt endpt ctx = [dashed-stroke opt#thickness pattern opt#color (arrow-body-path opt startpt endpt ctx)]
+let arrow-body-graphic strokef opt (startx,starty) (endx,endy)= 
+  List.append 
+    [strokef (start-path (startx,starty) |> arrow-body-path (startx,starty) opt#angle-out (endx,endy) opt#angle-in |> terminate-path);]
+    (
+    if opt#crossing-over then
+      let (dirx-out,diry-out) = get-direction-vector opt#angle-out (startx,starty) (endx,endy) in
+      let (dirx-in,diry-in) = 
+        let (x,y) = get-direction-vector opt#angle-in (startx,starty) (endx,endy) in
+        (0.0 -. x,0.0 -. y)
+      in
+      let haba = opt#thickness +' 2pt in
+      let pt-out-a = (startx -' haba *' diry-out,starty +' haba *' dirx-out) in
+      let pt-out-b = (startx +' haba *' diry-out,starty -' haba *' dirx-out) in
+      let pt-in-a = (endx -' haba *' diry-in,endy +' haba *' dirx-in) in
+      let pt-in-b = (endx +' haba *' diry-in,endy -' haba *' dirx-in) in
+      let reverse-angle angle =
+        match angle with
+        | AbsoluteAngle(a) -> AbsoluteAngle(180.0 +. a)
+        | RelativeAngle(a) -> RelativeAngle(180.0 +. a)
+      in
+      let p = start-path pt-out-a 
+        |> arrow-body-path pt-out-a opt#angle-out pt-in-a opt#angle-in |> line-to pt-in-b
+        |> arrow-body-path pt-in-b (reverse-angle opt#angle-in) pt-out-b (reverse-angle opt#angle-out)
+        |> line-to pt-out-a |> close-with-line
+      in
+      [fill Color.white p;]
+    else []
+    )
+
+
+let normal-arrow-body opt startpt endpt ctx = arrow-body-graphic (stroke opt#thickness opt#color) opt startpt endpt
+let dashed-arrow-body pattern opt startpt endpt ctx = arrow-body-graphic (dashed-stroke opt#thickness pattern opt#color) opt startpt endpt
 let none-arrow-body opt startpt endpt ctx = []
 
 let arrow-imply opt (startx,starty) (endx,endy) ctx =
-  let (dirx,diry) = get-direction-vector opt#angle-in (startx,starty) (endx,endy) in
+  let (dirx,diry) = 
+    let (x,y) = get-direction-vector opt#angle-in (startx,starty) (endx,endy) in
+    (0.0 -. x,0.0 -. y)
+  in
   let gr-tip = arrow-tip-from-standard-graphic opt#color 4pt 1pt 4pt (endx,endy) (dirx,diry) in
   let len = 1pt in
   List.append [
@@ -292,8 +327,8 @@ let bend f t = (|t with arrow-options = (|t#arrow-options with
   angle-in = RelativeAngle(180.0 -. f);
   angle-out = RelativeAngle(f);
 |);|)
-let bend-right t = bend 30.0 t
-let bend-left t = bend (0.0 -. 30.0) t
+let bend-right t = bend (0.0 -. 30.0) t
+let bend-left t = bend 30.0 t
 
 let shift p t = (|t with arrow-options = (|t#arrow-options with shift = p;|);|)
 let shift-in p t = (|t with arrow-options = (|t#arrow-options with shift-in = p;|);|)
@@ -304,7 +339,7 @@ let phantom t = (|t with
   arrow-options = (|t#arrow-options with phantom = true;|)
 |)
 
-let crossing-over t = (|t with crossing-over = true;|)
+let crossing-over t = (|t with arrow-options = (|t#arrow-options with crossing-over = true;|);|)
 let arrow-color c t = (|t with arrow-options = (|t#arrow-options with color = c;|);|)
 let label-color c t = (|t with color = c;|)
 let label-name s t = (|t with name = Some(s);|)
@@ -359,8 +394,8 @@ let arrow = arrow-scheme (|
       shift-in = (0pt,0pt);
       shift-out = (0pt,0pt);
       phantom = false;
+      crossing-over = false;
     |);
-    crossing-over = false;
     arrow = ArrowTailBodyHead(normal-arrow-tail,normal-arrow-body,normal-arrow-head);
     label-position = normal-label-position;
   |)
@@ -423,16 +458,15 @@ let draw-label ctx (posx,posy) (dirx,diry) label arrow-options =
       let adjusty = t *' diffy in
       (posx +' shiftx +' adjustx, posy +' shifty +' adjusty)
   in
-  let draw-graphic = [(
+  let draw-graphic = 
     if label#sloped then [
      draw-text (0pt -' (width *' 0.5), (depth -' height) *' 0.5) lit
         |> linear-transform-graphics (diffx /. distance) ((0.0 -. diffy) /. distance) (diffy /. distance) (diffx /. distance)
         |> shift-graphics (x +' (width *' 0.5), y +' ((height -' depth) *' 0.5))
     ] else [draw-text (x,y) lit]
-    ,1)]
   in
   let padding = 2pt in
-  let description-graphic = [(
+  let description-graphic = 
     if label#description then
       [fill Color.white (
         start-path (x -' padding, y -' depth -' padding)
@@ -442,7 +476,6 @@ let draw-label ctx (posx,posy) (dirx,diry) label arrow-options =
           |> close-with-line
       )]
     else []
-    ,1)]
   in
   let (w,h,d) = get-natural-metrics lit in
   let name-lst = 
@@ -466,7 +499,7 @@ let draw-label ctx (posx,posy) (dirx,diry) label arrow-options =
       ])]
     )
   in
-  (List.append description-graphic draw-graphic,name-lst)
+  ([(List.append description-graphic draw-graphic,2)],name-lst)
 
 let draw-crossing-over ctx (startx,starty) (endx,endy) =
   let x-f = Length.to-float (endx -' startx) in
@@ -491,30 +524,45 @@ let display-point s (x,y) =
 let get-boundary-point (centerx,centery) ptlst (dirx,diry) =
   let () = display-point `(dirx,diy) = ` (dirx,diry) in
   let () = display-point `(centerx,centery) = ` (centerx,centery) in
+  let distdir = sqrt ((dirx /' 1pt) *. (dirx /' 1pt) +. (diry /' 1pt) *. (diry /' 1pt)) in
+  % (dirx,diry)を長さ1に正規化しておく．
+  let dirx = dirx *' (1.0 /. distdir) in
+  let diry = diry *' (1.0 /. distdir) in
+  % px + qy = rが(centerx,centery)を通り(dirx,diry)方向に進む直線
+  let p = (0pt -' diry) /' 1pt in
+  let q = dirx /' 1pt in
+  let r = centerx *' p +' centery *' q in
   let-rec aux (prevx,prevy) lst =
     match lst with
     | [] -> None
     | (px,py) :: xs -> (
       % ax + by = cが(prevx,prevy)と(x,y)を通る直線．(a,b)は正規化しておく．
-      let aa = (prevy -' py) /' 1pt in
-      let bb = (px -' prevx) /' 1pt in
-      let dd = sqrt (aa *. aa +. bb *. bb) in
-      let a = aa /. dd in
-      let b = bb /. dd in
-      let distdir = sqrt ((dirx /' 1pt) *. (dirx /' 1pt) +. (diry /' 1pt) *. (diry /' 1pt)) in
-      let dx = dirx *' (1.0 /. distdir) in
-      let dy = diry *' (1.0 /. distdir) in
-      let c = px *' a +' py *' b in
-      let d = dx *' a +' dy *' b in
-      let () = display-message (`d = ` ^ (Float.to-string (Length.to-float d))) in
-      if (d <' 0.01pt && d >' -0.01pt) then aux (px,py) xs
+      let () = display-point `prevpoint: ` (prevx,prevy) in
+      let () = display-point `curpoint: ` (px,py) in
+      let prevr = prevx *' p +' prevy *' q -' r in
+      let curr = px *' p +' py *' q -' r in
+      let () = display-point `(prevr,curr) = ` (prevr,curr) in
+      if (
+        (prevr <' 0pt && curr <' 0pt) ||
+        (prevr >' 0pt && curr >' 0pt)
+      ) then aux (px,py) xs
       else (
-        let () = display-point `prevpoint: ` (prevx,prevy) in
-        let () = display-point `curpoint: ` (px,py) in
-        let t = ((c -' (centerx *' a +' centery  *' b)) /' d) in
-        let () = display-message (`t = ` ^ (Float.to-string t)) in
-        if Float.(t >= 0.0) then Some(centerx +' dx *' t,centery +' dy *' t)
-        else aux (px,py) xs
+        % (prevx,prevy)と(px,py)を結ぶ直線をax + by = cとする．
+        let aa = (prevy -' py) /' 1pt in
+        let bb = (px -' prevx) /' 1pt in
+        let dd = sqrt (aa *. aa +. bb *. bb) in
+        let a = aa /. dd in
+        let b = bb /. dd in
+        let c = px *' a +' py *' b in
+        let d = dirx *' a +' diry *' b in
+        let () = display-message (`d = ` ^ (Float.to-string (Length.to-float d))) in
+        if (d <' 0.01pt && d >' -0.01pt) then aux (px,py) xs
+        else (
+          let t = ((c -' (centerx *' a +' centery  *' b)) /' d) in
+          let () = display-message (`t = ` ^ (Float.to-string t)) in
+          if Float.(t >= 0.0) then Some(centerx +' dirx *' t,centery +' diry *' t)
+          else aux (px,py) xs
+        )
       )
     )
   in
@@ -597,12 +645,8 @@ let arrow-list-to-graphic-list arrow-data =
       in
       [(
         gr,
-        if arrow-data#crossing-over then 3 else 0
+        if arrow-data#arrow-options#crossing-over then 2 else 1
       )]
-    in
-    let crossing-over-graphics = 
-      if arrow-data#crossing-over then [(draw-crossing-over ctx startpt endpt ,2)]
-      else []
     in
     let (label-graphics,name-list) = List.fold-left 
       (fun (lst,nplst) l -> (
@@ -616,7 +660,7 @@ let arrow-list-to-graphic-list arrow-data =
     ([],[]) arrow-data#label in
     (
       (List.map (fun (g,n) -> (List.map (shift-graphics arrow-data#arrow-options#shift) g,n))
-        (List.append (List.append crossing-over-graphics arrow-graphics) label-graphics)),
+        (List.append arrow-graphics label-graphics)),
       name-list
     )
   in
