@@ -225,32 +225,32 @@ let arrow-body-path (startx,starty) angle-out (endx,endy) angle-in pth =
   let ((ctr1x,ctr1y),(ctr2x,ctr2y)) = get-bezier-control-points (startx,starty) angle-out (endx,endy) angle-in in
   pth |> bezier-to (ctr1x,ctr1y) (ctr2x,ctr2y) (endx,endy)
 
-let arrow-body-graphic strokef opt (startx,starty) (endx,endy)= 
+let arrow-body-crossing-over-graphics opt (startx,starty) (endx,endy) =
+  let (dirx-out,diry-out) = get-direction-vector opt#angle-out (startx,starty) (endx,endy) in
+  let (dirx-in,diry-in) = 
+    let (x,y) = get-direction-vector opt#angle-in (startx,starty) (endx,endy) in
+    (0.0 -. x,0.0 -. y)
+  in
+  let haba = opt#thickness +' 2pt in
+  let pt-out-a = (startx -' haba *' diry-out,starty +' haba *' dirx-out) in
+  let pt-out-b = (startx +' haba *' diry-out,starty -' haba *' dirx-out) in
+  let pt-in-a = (endx -' haba *' diry-in,endy +' haba *' dirx-in) in
+  let pt-in-b = (endx +' haba *' diry-in,endy -' haba *' dirx-in) in
+  let reverse-angle angle =
+    match angle with
+    | AbsoluteAngle(a) -> AbsoluteAngle(180.0 +. a)
+    | RelativeAngle(a) -> RelativeAngle(180.0 +. a)
+  in
+  [fill Color.white (start-path pt-out-a 
+    |> arrow-body-path pt-out-a opt#angle-out pt-in-a opt#angle-in |> line-to pt-in-b
+    |> arrow-body-path pt-in-b (reverse-angle opt#angle-in) pt-out-b (reverse-angle opt#angle-out)
+    |> line-to pt-out-a |> close-with-line
+  );]
+
+let arrow-body-graphic strokef opt startpt endpt =
   List.append 
-    [strokef (start-path (startx,starty) |> arrow-body-path (startx,starty) opt#angle-out (endx,endy) opt#angle-in |> terminate-path);]
-    (
-    if opt#crossing-over then
-      let (dirx-out,diry-out) = get-direction-vector opt#angle-out (startx,starty) (endx,endy) in
-      let (dirx-in,diry-in) = 
-        let (x,y) = get-direction-vector opt#angle-in (startx,starty) (endx,endy) in
-        (0.0 -. x,0.0 -. y)
-      in
-      let haba = opt#thickness +' 2pt in
-      let pt-out-a = (startx -' haba *' diry-out,starty +' haba *' dirx-out) in
-      let pt-out-b = (startx +' haba *' diry-out,starty -' haba *' dirx-out) in
-      let pt-in-a = (endx -' haba *' diry-in,endy +' haba *' dirx-in) in
-      let pt-in-b = (endx +' haba *' diry-in,endy -' haba *' dirx-in) in
-      let reverse-angle angle =
-        match angle with
-        | AbsoluteAngle(a) -> AbsoluteAngle(180.0 +. a)
-        | RelativeAngle(a) -> RelativeAngle(180.0 +. a)
-      in
-      let p = start-path pt-out-a 
-        |> arrow-body-path pt-out-a opt#angle-out pt-in-a opt#angle-in |> line-to pt-in-b
-        |> arrow-body-path pt-in-b (reverse-angle opt#angle-in) pt-out-b (reverse-angle opt#angle-out)
-        |> line-to pt-out-a |> close-with-line
-      in
-      [fill Color.white p;]
+    [strokef (start-path startpt |> arrow-body-path startpt opt#angle-out endpt opt#angle-in |> terminate-path);]
+    (if opt#crossing-over then arrow-body-crossing-over-graphics opt startpt endpt
     else []
     )
 
@@ -260,19 +260,30 @@ let dashed-arrow-body pattern opt startpt endpt ctx = arrow-body-graphic (dashed
 let none-arrow-body opt startpt endpt ctx = []
 
 let arrow-imply opt (startx,starty) (endx,endy) ctx =
-  let (dirx,diry) = 
+  let (dirx-out,diry-out) = get-direction-vector opt#angle-out (startx,starty) (endx,endy) in
+  let (dirx-in,diry-in) = 
     let (x,y) = get-direction-vector opt#angle-in (startx,starty) (endx,endy) in
     (0.0 -. x,0.0 -. y)
   in
-  let gr-tip = arrow-tip-from-standard-graphic opt#color 4pt 1pt 4pt (endx,endy) (dirx,diry) in
+  let gr-tip = arrow-tip-from-standard-graphic opt#color 4pt 1pt 4pt (endx,endy) (dirx-in,diry-in) in
   let len = 1pt in
-  List.append [
-    stroke opt#thickness opt#color 
-      (Gr.line (startx -' len *' diry,starty +' len *' dirx) (endx -' len *' (dirx +. diry),endy -' len *' (diry -. dirx)));
-    stroke opt#thickness opt#color 
-      (Gr.line (startx +' len *' diry,starty -' len *' dirx) (endx -' len *' (dirx -. diry),endy -' len *' (diry +. dirx)));
-  ] gr-tip
+  let start-pt-a = (startx -' len *' diry-out,starty +' len *' dirx-out) in
+  %let start-pt-b = (startx,starty) in
+  let start-pt-b = (startx +' len *' diry-out,starty -' len *' dirx-out) in
+  let end-pt-a = (endx -' len *' (1.5 *. dirx-in +. diry-in),endy -' len *' (1.5 *. diry-in -. dirx-in)) in
+  let end-pt-b = (endx -' len *' (1.5 *. dirx-in -. diry-in),endy -' len *' (1.5 *. diry-in +. dirx-in)) in
+  let gr-arrow =
+    List.append [
+      stroke opt#thickness opt#color 
+        (start-path start-pt-a |> arrow-body-path start-pt-a opt#angle-out end-pt-a opt#angle-in |> terminate-path);
+      stroke opt#thickness opt#color 
+        (start-path start-pt-b |> arrow-body-path start-pt-b opt#angle-out end-pt-b opt#angle-in |> terminate-path);
+    ] gr-tip
+  in
+  List.append gr-arrow 
+    (if opt#crossing-over then arrow-body-crossing-over-graphics opt (startx,starty) (endx,endy) else [])
 
+  
 let label ?:option it t = 
   let default-label = (|
     text = it;
