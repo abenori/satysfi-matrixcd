@@ -203,19 +203,15 @@ let-rec multiple-arrow-head count opt (startx,starty) (endx,endy) ctx =
     let (xx,yy) = get-direction-vector opt#angle-in (startx,starty) (endx,endy) in
     (0.0 -. xx,0.0 -. yy) % angleは入ってくる方向なので矢印の向きは逆
   in
+  let gr =
+    let ar-gr = arrow-tip-from-standard-graphic opt#color 4pt 1pt 4pt (endx,endy) (x,y) in
+    if count == 1 then ar-gr
+    else
+      let (_,gg) = multiple-arrow-head (count - 1) opt (startx,starty) (endx -' 2pt *' x,endy -' 2pt *' y) ctx in
+      List.append ar-gr gg
+  in
   let pos = opt#thickness in
-  let arstpt =
-    if count == 1 then  (endx -' pos *' x,endy -' pos *' y) 
-    else (endx -' 2pt *' x,endy -' 2pt *' y)
-  in
-  let (endpt,g) =
-    if count == 1 then (arstpt,[])
-    else multiple-arrow-head (count - 1) opt (startx,starty) arstpt ctx
-  in
-  (arstpt,(List.append g (
-    List.append 
-      (arrow-tip-from-standard-graphic opt#color 4pt 1pt 4pt (endx,endy) (x,y))
-      [stroke opt#thickness opt#color (start-path arstpt |> line-to (endx,endy) |> terminate-path)])))
+  ((endx -' pos *' x,endy -' pos *' y),gr)
 
 let normal-arrow-head = multiple-arrow-head 1
 let none-arrow-head opt startpt endpt ctx = (endpt,[])
