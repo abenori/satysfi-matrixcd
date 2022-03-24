@@ -188,7 +188,7 @@ let mapsto-arrow-tail opt (startx,starty) (endx,endy) ctx =
 let hook-arrow-tail swap opt (startx,starty) (endx,endy) ctx =
   let radius = 1.5pt in
   let (dirx,diry) = get-direction-vector opt#angle-out (startx,starty) (endx,endy) in
-  let (x,y) = (0pt -' radius *' dirx,0pt -' radius *' diry) in
+  let (x,y) = (0pt +' radius *' dirx,0pt +' radius *' diry) in
   let (cx,cy) = if swap then (startx +' x  +' y, starty +' y -' x) else (startx +' x  -' y, starty +' y +' x) in
   let (tx,ty) = (x *' 0.55228, y *' 0.55228) in
   let path = start-path (cx +' y,cy -' x)
@@ -504,7 +504,8 @@ let draw-label ctx (posx,posy) (dirx,diry) label arrow-options =
       ])]
     )
   in
-  let gr = List.append description-graphic draw-graphic in
+  % 順番大事！
+  let gr = List.append draw-graphic description-graphic in
   ([(gr,2)],name-lst)
 
 let draw-crossing-over ctx (startx,starty) (endx,endy) =
@@ -735,16 +736,17 @@ let get-position-function coordxlist coordylist hor-padding-list ver-padding-lis
 
 let-rec draw-arrows-aux ctx position target-list name-list =
   % drawed: 描画が今回行われた（リストが更新された）
+  % done: 名前解決できなかったのがあればSome(名前)，そうでないならばNone
   let (new-target-list,new-name-list,drawed,done) =
     List.fold-left (fun (tlst,nlst,drwd,don) target -> (
       match target with
       | AfterDraw(gr) -> (List.cons (AfterDraw(gr)) tlst,nlst,drwd,don)
       | BeforeDraw(gr-func,(from,from-angle),(to,to-angle)) -> (
         match position name-list from with
-        | None -> (List.cons (BeforeDraw(gr-func,(from,from-angle),(to,to-angle))) tlst,nlst,drwd,false)
+        | None -> (List.cons (BeforeDraw(gr-func,(from,from-angle),(to,to-angle))) tlst,nlst,drwd,Some(from))
         | Some(from-pos) ->(
           match position name-list to with 
-          | None -> (List.cons (BeforeDraw(gr-func,(from,from-angle),(to,to-angle))) tlst,nlst,drwd,false)
+          | None -> (List.cons (BeforeDraw(gr-func,(from,from-angle),(to,to-angle))) tlst,nlst,drwd,Some(to))
           | Some(to-pos) -> (
             let (arrow-from,arrow-to) = get-source-target from-pos from-angle to-pos to-angle in
             let (cur-grs,cur-nl) = gr-func ctx arrow-from arrow-to in
@@ -755,22 +757,30 @@ let-rec draw-arrows-aux ctx position target-list name-list =
           )
         )
       )
-    )) ([],[],false,true) target-list
+    )) ([],[],false,None) target-list
   in
-  if done then List.fold-left (fun gt g -> (
-    match g with 
-    | BeforeDraw(a,b,c) -> (
-      let () = abort-with-message `unexpected BeforeDraw, a bug` in
-      []
-    )
-    | AfterDraw(gr) -> List.cons gr gt
-  )) [] new-target-list 
-  else 
+  match done with
+  | None -> (
+    List.fold-left (fun gt g -> (
+      match g with 
+      | BeforeDraw(a,b,c) -> (
+        let () = abort-with-message `unexpected BeforeDraw, a bug` in
+        []
+      )
+      | AfterDraw(gr) -> List.cons gr gt
+    )) [] new-target-list 
+  )
+  | Some(name) -> (
     if drawed then draw-arrows-aux ctx position new-target-list new-name-list
     else (
-      let () = abort-with-message `failed to resolve names` in
+      let () = 
+        match name with
+        | Position-Name(n) -> abort-with-message (#`cannot resolve a name `# ^ n)
+        | Position-Coordinate(_,_) -> abort-with-message `cannot resolve a position given by coordinate, may be a bug`
+      in
       []
     )
+  )
 
 let draw-arrows ctx coordxlist coordylist hor-padding-list ver-padding-list metric-list arrow-list =
   let target-list = arrow-list-to-graphic-funcs-pos arrow-list in
