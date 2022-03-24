@@ -13,4 +13,4 @@ satyrographos install
 Another way is to put `matrixcd.saty` in the suitable directory.
 
 ## Usage
-See (matrixcd-doc.pdf)[matrixcd-doc.pdf] (Currently it does not exist.)
+See matrixcd-doc.saty.

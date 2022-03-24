@@ -1,0 +1,334 @@
+@require: stdja
+@require: code
+@require: itemize
+%@require: matrixcd/matrixcd
+@import: matrixcd
+
+open MatrixCD
+in
+
+document(|
+  author = {Noriyuki Abe};
+  show-title = false;
+  show-toc = false;
+  title = {MatrixCD}
+|)'<
+
++section{What is this?}<
+  +p{
+    This is a \SATySFi; package for drawing a commutative diagram and its kind.
+    An example is as follows.
+    \eqn(${
+      \matrixcd{
+        | A\arrow![to `r`;label ${f}]\arrow![to `d`;label ${g}] | B\arrow![to `d`;label ${g'}]\cr
+        | C\arrow![to `r`;label ${f'}] | D.
+      |}
+    });
+    The syntax was imspired by a \LaTeX; package ‘tikz-cd’.
+  }
+>
+
++section{Usage}<
+  +p{
+    First of all, load the package by \code(`@require: matrixcd`);.
+  }
+
+  +p{
+    The following code produced an example in the above.
+  }
+
+  +code(``
+\eqn(${
+  \MatrixCD.matrixcd{
+    | A
+      \MatrixCD.arrow![MatrixCD.to `r`;MatrixCD.label ${f}]
+      \MatrixCD.arrow![MatrixCD.to `d`;MatrixCD.label ${g}] 
+    | B\MatrixCD.arrow![MatrixCD.to `d`;MatrixCD.label ${g'}]
+      \MatrixCD.cr
+    | C\MatrixCD.arrow![MatrixCD.to `r`;MatrixCD.label ${f'}]
+    | D.
+  |}
+});``);
+
+  
+  +p{
+    Perhaps some of you think that many `MatrixCD` is annoying.
+    You can omit this by adding \code(`open MatrixCD`); in the preamble.
+    The simplyfied code is as follows.
+  }
+
+  +code(``
+\eqn(${
+  \matrixcd{
+    | A\arrow![to `r`;label ${f}]\arrow![to `d`;label ${g}] 
+      | B\arrow![to `d`;label ${g'}]\cr
+    | C\arrow![to `r`;label ${f'}] | D.
+  |}
+});
+``);
+
+  +p{
+    In the following,  only this simplified codes are given. (Namely \code(`open MatrixCD`); is always assumed.)
+    In the rest. we also omit \code(`\eqn`);.
+  }
+  +p{
+    The basic command is \code(`\matrixcd`);.
+    The objects are placed as a ‘tabular’ and they are separated by \code(`|`);.
+    To go to the next line, you can use \code(`\cr`);.
+    Here is an example. (Do not forget the last \code(`|`);.)
+  }
++code(``
+\matrixcd{
+  | A | B\cr
+  | C | D
+|}
+``);
+  +p{
+    It gives the following.
+  }
+  +p{
+    \eqn(${
+      \matrixcd{
+        | A | B\cr
+        | C | D
+      |}
+    });
+  }
+  +p{
+    To draw an arrow, one can use \code(`\arrow`); command.
+    The syntax is \code(`\arrow![option list]`);.
+    The option list is a list of options separated with \code(`;`);.
+    The most important option is \code(`to`); which is used to specify the target of the arrow.
+    This can be used as \code(```to `rrd`; ```);.
+    The argument is the sequence of characters \code(`l`);, \code(`r`);, \code(`u`);, \code(`d`); which stand for left, right, up and down, respectively.
+    Here is an example of the code and the output.
+  }
++code(``
+\matrixcd{
+  | A\arrow![to `rrd`] | B | C\cr
+  | | D
+|}
+``);
+  +p{
+    \eqn(${
+      \matrixcd{
+        | A\arrow![to `rrd`] | B | C\cr
+        | | | D
+      |}
+    });
+  }
+  +p{
+    One can add a label to each arrow by using \code(`label`); option.
+  }
+  +code(``
+\matrixcd{
+  | A\arrow![to `r`; label ${f}] | B
+|}
+  ``);
+  +p{
+    \eqn(${
+      \matrixcd{
+        | A\arrow![to `r`; label ${f}] | B
+      |}
+    });
+  }
+  +p{
+    One can add an option to a label by \code(`label ?:[option list] ${<label>}`);.
+    For example, by the option \code(`swap`);, you can swap the position of the label.
+  }
+  +code(``
+\matrixcd{
+  | A\arrow![to `r`; label ?:[swap] ${f}] | B
+|}
+  ``);
+  +p{
+    \eqn(${
+      \matrixcd{
+        | A\arrow![to `r`; label ?:[swap] ${f}] | B
+      |}
+    });
+  }
+
+>
+
++section{Options for \code(`\arrow`);}<
+  +code(``
+\matrixcd{
+  | A\arrow![to `r`;twoheadrightarrow]
+  | B\arrow![to `r`;dotted]
+  | C\arrow![to `r`;dashed]
+  | D\arrow![to `r`;mapsto]
+  | E\arrow![to `r`;imply]
+  | F\cr
+  | G\arrow![to `r`;dash]
+  | H\arrow![to `r`;arrow-color Color.red]
+  | I\arrow![to `r`;hook]
+  | J
+  | K\arrow![to `l`;hook-swap]
+|}
+  ``);
+  +p{
+    \eqn(${
+      \matrixcd{
+  | A\arrow![to `r`;twoheadrightarrow]
+  | B\arrow![to `r`;dotted]
+  | C\arrow![to `r`;dashed]
+  | D\arrow![to `r`;mapsto]
+  | E\arrow![to `r`;imply]
+  | F\cr
+  | G\arrow![to `r`;dash]
+  | H\arrow![to `r`;arrow-color Color.red]
+  | I\arrow![to `r`;hook]
+  | J
+  | K\arrow![to `l`;hook-swap]
+      |}
+    });
+  }
+
++code(``
+\eqn(${
+  \matrixcd{
+    | A\arrow![to `r`;bend-right] 
+    | B\arrow![to `r`;bend-left]
+    | C\arrow![to `r`;bend 90.0]
+    | D\arrow![to `r`;arrow-out 270.0]
+    | E\arrow![to `r`;arrow-in 240.0]
+    | F
+  |}
+});
+``);
+  +p{
+    \eqn(${
+      \matrixcd{
+        | A\arrow![to `r`;bend-right] 
+        | B\arrow![to `r`;bend-left]
+        | C\arrow![to `r`;bend 90.0]
+        | D\arrow![to `r`;arrow-out 270.0]
+        | E\arrow![to `r`;arrow-in 240.0]
+        | F
+      |}
+    });
+  }
+  +p{
+    The option \code(`phantom`); erases the arrow and put the label between objects.
+  }
+  +code(``
+\matrixcd{|
+  a\arrow![to `r`;phantom;label ${\in}] | A
+|}
+  ``);
+  +p{
+    \eqn(${
+      \matrixcd{|
+        a\arrow![to `r`;phantom;label ${\in}] | A
+      |}
+    });
+  }
+  +p{
+    \code(`shift (x,y)`); shifts the place of arrows, \code(`shift-out (x,y)`); (resp. \code(`shift-in (x,y)`);) shifts the source (resp. target) of the arrow.
+  }
+  +code(``
+\matrixcd{
+  | A\arrow![to `r`;shift (15pt,10pt)]
+  | B\arrow![to `r`;shift-in (15pt,-15pt)]
+  | C\arrow![to `r`;shift-out (-15pt,15pt)]
+  | D
+|}
+  ``);
+  +p{
+    \eqn(${
+      \matrixcd{
+        | A\arrow![to `r`;shift (15pt,10pt)]
+        | B\arrow![to `r`;shift-in (15pt,-15pt)]
+        | C\arrow![to `r`;shift-out (-15pt,15pt)]
+        | D
+      |}
+    });
+  }
+  +p{
+    Then angle at the source (resp. target) can be specified with \code(`arrow-out`); (resp. \code(`arrow-in`);).
+    The option \code(`bend a`);, where \code(`a`); is a float number, sets the angle at the source (resp. target) \code(`a + <natural angle>`); (resp. \code(`180 - a + <natural angle>`);).
+    \code(`bend-right`); (resp. \code(`bend-left`);)  is the same as \code(`bend -30.0`); (resp. \code(`bend 30.0`);).
+  }
+  +code(``
+\matrixcd{
+  | A\arrow![to `rd`; arrow-out 90.0;arrow-in 270.0]
+  | B\arrow![to `rd`;bend-right;]\arrow![to `rd`;bend-left]
+  | | \cr
+  | C
+  | D\arrow![to `r`;bend 70.0]
+  | E
+|}
+  ``);
+  +p{
+    \eqn(${
+      \matrixcd{
+        | A\arrow![to `rd`; arrow-out 90.0;arrow-in 270.0]
+        | B\arrow![to `rd`;bend-right;arrow-color Color.red]\arrow![to `rd`;bend-left]
+        | | \cr
+        | C\arrow![to `r`;bend 70.0]
+        | D
+        | E
+      |}
+    });
+  }
+>
+
++section{Options for label}<
+  +p{
+    A label can be attached by label option with \code(`\arrow`);.
+    The option \code(`label`); also accept options.
+  }
+  +p{
+    \code(`label-color`); changes the color of the label.
+    \code(`swap`); swaps the position of the label.
+    \code(`pos f`); change the position of the label.
+    Here, \code(`f`); is a float number and \code(`pos 0.0`); (resp. \code(`pos 1.0`);) means that the label is at the source (resp. target) of the arrow.
+    By \code(`description`);, label is placed on the arrow.
+  }
++code(``
+\matrixcd{
+  | A\arrow![to `r`;label ?:[label-color Color.red] ${f}] 
+  | B\arrow![to `r`;label ?:[swap] ${g}]
+  | C\arrow![to `r`;label ?:[pos 0.2] ${h}]
+  | D\arrow![to `r`;label ?:[description] ${i}]
+  | E
+|}
+``);
+  +p{
+    \eqn(${
+      \matrixcd{
+        | A\arrow![to `r`;label ?:[label-color Color.red] ${f}] 
+        | B\arrow![to `r`;label ?:[swap] ${g}]
+        | C\arrow![to `r`;label ?:[pos 0.2] ${h}]
+        | D\arrow![to `r`;label ?:[description] ${i}]
+        | E
+      |}
+    });
+  }
+  +p{
+    \code(`label-name`); gives a name to the label and such a name can be used to specify the position of the source or the target of an arrow.
+    To specify via name, one can use \code(`to-by-name`); and \code(`from-by-name`);.
+  }
++code(``
+\matrixcd{
+  | A\arrow![to `r`;label ?:[label-name `func-f`] ${F}] |B\cr
+  | C\arrow![to `r`;label ?:[label-name `func-g`] ${G}]
+  | D\arrow![
+      from-by-name `func-f`;to-by-name `func-g`;
+      shift-out (0pt,-3pt);shift-in (0pt,3pt);imply]
+|}
+``);
+  +p{
+    \eqn(${
+      \matrixcd{
+        | A\arrow![to `r`;label ?:[label-name `func-f`;swap] ${F}] |B\cr
+        | C\arrow![to `r`;label ?:[label-name `func-g`] ${G}]
+        | D\arrow![from-by-name `func-f`;to-by-name `func-g`;shift-out (0pt,-3pt);shift-in (0pt,3pt);imply]
+      |}
+    });
+  }
+>
+
+
+>
