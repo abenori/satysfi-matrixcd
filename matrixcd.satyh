@@ -100,7 +100,7 @@ type arrow-data = (|
   label : label-data list;
   arrow-options : arrow-option-data;
   arrow : arrow-shape;
-  label-position : arrow-option-data -> length * length -> length * length -> float -> (length * length) * (length * length);
+  label-position : arrow-option-data -> length * length -> length * length -> float -> (length * length) * (float * float);
 |)
 
 type arrow-option = arrow-data -> arrow-data
@@ -118,8 +118,8 @@ let sqrt x =
   aux x 10
 let to-radian angle = angle *. 3.14159 /. 180.0
 let rotate (x,y) angle = (
-  (x *' (cos angle) -' y *' (sin angle)),
-  (x *' (sin angle) +' y *' (cos angle))
+  (x *. (cos angle) -. y *. (sin angle)),
+  (x *. (sin angle) +. y *. (cos angle))
 )
 
 let abs-length a = if a <' 0pt then 0pt -' a else a
@@ -171,7 +171,7 @@ let normal-label-position opt (startx,starty) (endx,endy) pos =
   let (p4x,p4y) = (p2x *' pos +' p1x *' (1.0 -. pos),p2y *' pos +' p1y *' (1.0 -. pos)) in
   let (p5x,p5y) = (p3x *' pos +' p2x *' (1.0 -. pos),p3y *' pos +' p2y *' (1.0 -. pos)) in
   let (rx,ry) = (p5x *' pos +' p4x *' (1.0 -. pos),p5y *' pos +' p4y *' (1.0 -. pos)) in
-  ((rx,ry),(p5x -' p4x,p5y -' p4y))
+  ((rx,ry),((p5x -' p4x) /' 1pt,(p5y -' p4y) /' 1pt))
 
 let normal-arrow-tail opt startpt endpt ctx = (startpt,[])
 let none-arrow-tail = normal-arrow-tail
@@ -436,8 +436,8 @@ let draw-label ctx (posx,posy) (dirx,diry) label arrow-options =
     |> set-text-color label#color
   ) label#text in
   let (width,height,depth) = get-natural-metrics lit in
-  let diffx = (if label#swap then (0.0 -. 1.0) else 1.0) *. Length.to-float dirx in
-  let diffy = (if label#swap then (0.0 -. 1.0) else 1.0) *. Length.to-float diry in
+  let diffx = (if label#swap then (0.0 -. 1.0) else 1.0) *. dirx in
+  let diffy = (if label#swap then (0.0 -. 1.0) else 1.0) *. diry in
   let distance = sqrt ((diffx *. diffx) +. (diffy *. diffy)) in
   let (x,y) = % 左下の座標
     if label#description || arrow-options#phantom then
@@ -445,13 +445,13 @@ let draw-label ctx (posx,posy) (dirx,diry) label arrow-options =
     else
       let shiftx = 
         (3pt *' diffy *. (0.0 -. 1.0) *. (1.0 /. distance)) -' (
-          if ((not label#swap) && (diry <' 0pt) || ((label#swap) && (diry >' 0pt))) then 0pt
+          if ((not label#swap) && Float.(diry < 0.0) || ((label#swap) && Float.(diry > 0.0))) then 0pt
           else width
         )
       in
       let shifty = 
         (3pt *' diffx *. (1.0 /.  distance)) +' (
-          if (not label#swap) && (dirx >' 0pt) || ((label#swap) && (dirx <' 0pt)) then depth
+          if (not label#swap) && Float.(dirx > 0.0) || ((label#swap) && Float.(dirx < 0.0)) then depth
           else (0pt -'height)
         )
       in
@@ -531,13 +531,9 @@ let display-point s (x,y) =
 let get-boundary-point (centerx,centery) ptlst (dirx,diry) =
   %let () = display-point `(dirx,diy) = ` (dirx,diry) in
   %let () = display-point `(centerx,centery) = ` (centerx,centery) in
-  let distdir = sqrt ((dirx /' 1pt) *. (dirx /' 1pt) +. (diry /' 1pt) *. (diry /' 1pt)) in
-  % (dirx,diry)を長さ1に正規化しておく．
-  let dirx = dirx *' (1.0 /. distdir) in
-  let diry = diry *' (1.0 /. distdir) in
   % px + qy = rが(centerx,centery)を通り(dirx,diry)方向に進む直線
-  let p = (0pt -' diry) /' 1pt in
-  let q = dirx /' 1pt in
+  let p = 0.0 -. diry in
+  let q = dirx in
   let r = centerx *' p +' centery *' q in
   let-rec aux (prevx,prevy) lst =
     match lst with
@@ -561,13 +557,13 @@ let get-boundary-point (centerx,centery) ptlst (dirx,diry) =
         let a = aa /. dd in
         let b = bb /. dd in
         let c = px *' a +' py *' b in
-        let d = dirx *' a +' diry *' b in
+        let d = dirx *. a +. diry *. b in
         %let () = display-message (`d = ` ^ (Float.to-string (Length.to-float d))) in
-        if (d <' 0.01pt && d >' -0.01pt) then aux (px,py) xs
+        if Float.(d < 0.01 && d > (0.0-.0.01)) then aux (px,py) xs
         else (
-          let t = ((c -' (centerx *' a +' centery  *' b)) /' d) in
+          let t = ((c -' (centerx *' a +' centery  *' b)) *' (1.0 /. d)) in
           %let () = display-message (`t = ` ^ (Float.to-string t)) in
-          if Float.(t >= 0.0) then Some(centerx +' dirx *' t,centery +' diry *' t)
+          if Length.(t >= 0pt) then Some(centerx +' t *' dirx,centery +' t *' diry)
           else aux (px,py) xs
         )
       )
@@ -590,16 +586,19 @@ let get-boundary-point (centerx,centery) ptlst (dirx,diry) =
 let get-source-target
   ((from-x,from-y),from-pts) from-angle
   ((to-x,  to-y)  ,to-pts)   to-angle =
-  let direction-vector = (to-x -' from-x, to-y -' from-y) in
+  let d-x  = (to-x -' from-x) /' 1pt in
+  let d-y  = (to-y -' from-y) /' 1pt in
+  let dist = sqrt (d-x *. d-x +. d-y *. d-y) in
+  let direction-vector = (d-x /. dist, d-y /. dist) in
   let direction-out = 
     match from-angle with
     | RelativeAngle(a) -> rotate direction-vector (to-radian a)
-    | AbsoluteAngle(a) -> (1pt *' cos (to-radian a),1pt *' sin (to-radian a))
+    | AbsoluteAngle(a) -> (cos (to-radian a),sin (to-radian a))
   in
   let direction-in = 
     match to-angle with
     | RelativeAngle(a) -> rotate direction-vector (to-radian a)
-    | AbsoluteAngle(a) -> (1pt *' cos (to-radian a),1pt *' sin (to-radian a))
+    | AbsoluteAngle(a) -> (cos (to-radian a),sin (to-radian a))
   in
   let (arrow-start-x,arrow-start-y) = get-boundary-point (from-x,from-y) from-pts direction-out in
   let (arrow-end-x,arrow-end-y) = get-boundary-point (to-x,to-y) to-pts direction-in in
