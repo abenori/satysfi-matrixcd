@@ -24,7 +24,7 @@ document(|
         | C\arrow![to `r`;label ${f'}] | D.
       |}
     });
-    The syntax was imspired by a \LaTeX; package ‘tikz-cd’.
+    The syntax is imspired by a \LaTeX; package ‘tikz-cd’.
   }
 >
 
@@ -61,7 +61,7 @@ document(|
 \eqn(${
   \matrixcd{
     | A\arrow![to `r`;label ${f}]\arrow![to `d`;label ${g}] 
-      | B\arrow![to `d`;label ${g'}]\cr
+    | B\arrow![to `d`;label ${g'}]\cr
     | C\arrow![to `r`;label ${f'}] | D.
   |}
 });
@@ -73,8 +73,8 @@ document(|
   }
   +p{
     The basic command is \code(`\matrixcd`);.
-    The objects are placed as a ‘tabular’ and they are separated by \code(`|`);.
-    To go to the next line, you can use \code(`\cr`);.
+    The objects are placed as a ‘table’ and they are separated by \code(`|`);.
+    The command \code(`\cr`); place the next object at the next line.
     Here is an example. (Do not forget the last \code(`|`);.)
   }
 +code(``
@@ -99,8 +99,8 @@ document(|
     The syntax is \code(`\arrow![option list]`);.
     The option list is a list of options separated with \code(`;`);.
     The most important option is \code(`to`); which is used to specify the target of the arrow.
-    This can be used as \code(```to `rrd`; ```);.
-    The argument is the sequence of characters \code(`l`);, \code(`r`);, \code(`u`);, \code(`d`); which stand for left, right, up and down, respectively.
+    This can be used like \code(```to `rrd`; ```);.
+    The argument is a sequence of characters \code(`l`);, \code(`r`);, \code(`u`);, \code(`d`); which stand for left, right, up and down, respectively.
     Here is an example of the code and the output.
   }
 +code(``
@@ -185,30 +185,6 @@ document(|
     });
   }
 
-+code(``
-\eqn(${
-  \matrixcd{
-    | A\arrow![to `r`;bend-right] 
-    | B\arrow![to `r`;bend-left]
-    | C\arrow![to `r`;bend 90.0]
-    | D\arrow![to `r`;arrow-out 270.0]
-    | E\arrow![to `r`;arrow-in 240.0]
-    | F
-  |}
-});
-``);
-  +p{
-    \eqn(${
-      \matrixcd{
-        | A\arrow![to `r`;bend-right] 
-        | B\arrow![to `r`;bend-left]
-        | C\arrow![to `r`;bend 90.0]
-        | D\arrow![to `r`;arrow-out 270.0]
-        | E\arrow![to `r`;arrow-in 240.0]
-        | F
-      |}
-    });
-  }
   +p{
     The option \code(`phantom`); erases the arrow and put the label between objects.
   }
@@ -256,7 +232,7 @@ document(|
   | B\arrow![to `rd`;bend-right;]\arrow![to `rd`;bend-left]
   | | \cr
   | C
-  | D\arrow![to `r`;bend 70.0]
+  | D\arrow![to `ru`;bend 70.0]
   | E
 |}
   ``);
@@ -266,7 +242,7 @@ document(|
         | A\arrow![to `rd`; arrow-out 90.0;arrow-in 270.0]
         | B\arrow![to `rd`;bend-right;arrow-color Color.red]\arrow![to `rd`;bend-left]
         | | \cr
-        | C\arrow![to `r`;bend 70.0]
+        | C\arrow![to `ru`;bend 70.0]
         | D
         | E
       |}
@@ -312,19 +288,42 @@ document(|
   }
 +code(``
 \matrixcd{
-  | A\arrow![to `r`;label ?:[label-name `func-f`] ${F}] |B\cr
-  | C\arrow![to `r`;label ?:[label-name `func-g`] ${G}]
+  | A\arrow![to `r`;label ?:[label-name `func-f`] ${f}] |B\cr
+  | C\arrow![to `r`;label ?:[label-name `func-g`] ${g}]
   | D\arrow![
       from-by-name `func-f`;to-by-name `func-g`;
-      shift-out (0pt,-3pt);shift-in (0pt,3pt);imply]
+      shift-out (0pt,-3pt);shift-in (0pt,3pt)]
 |}
 ``);
   +p{
     \eqn(${
       \matrixcd{
-        | A\arrow![to `r`;label ?:[label-name `func-f`;swap] ${F}] |B\cr
-        | C\arrow![to `r`;label ?:[label-name `func-g`] ${G}]
-        | D\arrow![from-by-name `func-f`;to-by-name `func-g`;shift-out (0pt,-3pt);shift-in (0pt,3pt);imply]
+        | A\arrow![to `r`;label ?:[label-name `func-f`;swap] ${f}] |B\cr
+        | C\arrow![to `r`;label ?:[label-name `func-g`] ${g}]
+        | D\arrow![from-by-name `func-f`;to-by-name `func-g`;shift-out (0pt,-3pt);shift-in (0pt,3pt)]
+      |}
+    });
+  }
+  +p{
+    One can give a name to an empty label.
+  }
+  +code(``
+\matrixcd{
+  | A
+    \arrow![to `r`;bend-left;label [label-name `u`] ${}]
+    \arrow![to `r`;bend-right;label [label-name `d`] ${}]
+    \arrow![from-by-name `u`;to-by-name `d`;]
+  | B
+|}
+``);
+  +p{
+    \eqn(${
+      \matrixcd{
+        | A
+          \arrow![to `r`;bend-left;label ?:[label-name `u`;swap] ${}]
+          \arrow![to `r`;bend-right;label ?:[label-name `d`] ${}]
+          \arrow![from-by-name `u`;to-by-name `d`;imply]
+        | B
       |}
     });
   }
