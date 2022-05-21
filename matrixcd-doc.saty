@@ -312,7 +312,7 @@ document(|
   | A
     \arrow![to `r`;bend-left;label [label-name `u`] ${}]
     \arrow![to `r`;bend-right;label [label-name `d`] ${}]
-    \arrow![from-by-name `u`;to-by-name `d`;]
+    \arrow![from-by-name `u`;to-by-name `d`;imply]
   | B
 |}
 ``);
