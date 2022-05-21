@@ -2,7 +2,7 @@
 
 (library
   (name "matrixcd")
-  (version "0.0.3")
+  (version "0.1.0")
   (sources
     ((package "matrixcd.satyh" "./matrixcd.satyh")
      ))
@@ -10,3 +10,16 @@
   (dependencies (
     (base ())
   )))
+
+(libraryDoc
+  (name "matrixcd-doc")
+  (version "0.1.0")
+  (build
+    ((satysfi "matrixcd-doc.saty" "-o" "matrixcd-doc.pdf")))
+  (sources
+    ((doc "matrixcd-doc.pdf" "matrixcd-doc.pdf")))
+  (opam "satysfi-matrixcd-doc.opam")
+  (dependencies
+    ((matrixcd ()) ; the main library
+     (dist ()) ; Standard library
+    )))
